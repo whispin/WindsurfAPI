@@ -97,7 +97,9 @@ async function nonStreamResponse(client, id, created, model, messages, modelEnum
       },
     };
   } catch (err) {
-    if (!err.isModelError) reportError(apiKey);
+    // Don't count connection/protocol errors against the account
+    const isTransient = /ECONNREFUSED|ECONNRESET|EPIPE|invalid_argument|unmarshal|wire-format/.test(err.message);
+    if (!err.isModelError && !isTransient) reportError(apiKey);
     recordRequest(model, false, Date.now() - startTime, apiKey);
     log.error('Chat error:', err.message);
     return {
@@ -156,7 +158,8 @@ function streamResponse(client, id, created, model, messages, modelEnum, modelUi
       };
 
       const onError = (err) => {
-        if (!err.isModelError) reportError(apiKey);
+        const isTransient = /ECONNREFUSED|ECONNRESET|EPIPE|invalid_argument|unmarshal|wire-format/.test(err.message);
+        if (!err.isModelError && !isTransient) reportError(apiKey);
         log.error('Stream error:', err.message);
         try {
           send({
