@@ -12,6 +12,7 @@ import {
 import { restartLsForProxy } from '../langserver.js';
 import { getLsStatus, stopLanguageServer, startLanguageServer, isLanguageServerRunning } from '../langserver.js';
 import { getStats, resetStats, recordRequest } from './stats.js';
+import { cacheStats, cacheClear } from '../cache.js';
 import { getLogs, subscribeToLogs, unsubscribeFromLogs } from './logger.js';
 import { getProxyConfig, setGlobalProxy, setAccountProxy, removeProxy, getEffectiveProxy } from './proxy-config.js';
 import { MODELS } from '../models.js';
@@ -72,7 +73,17 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
       successRate: stats.totalRequests > 0
         ? ((stats.successCount / stats.totalRequests) * 100).toFixed(1)
         : '0.0',
+      cache: cacheStats(),
     });
+  }
+
+  // ─── Cache ────────────────────────────────────────────
+  if (subpath === '/cache' && method === 'GET') {
+    return json(res, 200, cacheStats());
+  }
+  if (subpath === '/cache' && method === 'DELETE') {
+    cacheClear();
+    return json(res, 200, { success: true });
   }
 
   // ─── Accounts ─────────────────────────────────────────

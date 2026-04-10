@@ -10,6 +10,7 @@ import https from 'https';
 import { randomUUID } from 'crypto';
 import { log } from './config.js';
 import { grpcFrame, grpcUnary, grpcStream } from './grpc.js';
+import { getLsEntryByPort } from './langserver.js';
 import {
   buildRawGetChatMessageRequest, parseRawResponse,
   buildInitializePanelStateRequest,
@@ -91,6 +92,46 @@ export class WindsurfClient {
     });
   }
 
+  /**
+   * Run (or wait for) the one-shot Cascade workspace init for this LS.
+   * Idempotent — the LS entry caches the in-flight Promise so concurrent
+   * callers share one init round. Safe to call from a startup warmup path
+   * so the first real chat request skips these 3 gRPC round-trips.
+   */
+  warmupCascade() {
+    const lsEntry = getLsEntryByPort(this.port);
+    if (!lsEntry) return Promise.resolve();
+    if (!lsEntry.sessionId) lsEntry.sessionId = randomUUID();
+    if (lsEntry.workspaceInit) return lsEntry.workspaceInit;
+
+    const sessionId = lsEntry.sessionId;
+    const workspacePath = '/tmp/windsurf-workspace';
+    const workspaceUri = 'file:///tmp/windsurf-workspace';
+
+    lsEntry.workspaceInit = (async () => {
+      try {
+        const initProto = buildInitializePanelStateRequest(this.apiKey, sessionId);
+        await grpcUnary(this.port, this.csrfToken,
+          `${LS_SERVICE}/InitializeCascadePanelState`, grpcFrame(initProto), 5000);
+      } catch (e) { log.warn(`InitializeCascadePanelState: ${e.message}`); }
+      try {
+        const addWsProto = buildAddTrackedWorkspaceRequest(this.apiKey, workspacePath, sessionId);
+        await grpcUnary(this.port, this.csrfToken,
+          `${LS_SERVICE}/AddTrackedWorkspace`, grpcFrame(addWsProto), 5000);
+      } catch (e) { log.warn(`AddTrackedWorkspace: ${e.message}`); }
+      try {
+        const trustProto = buildUpdateWorkspaceTrustRequest(this.apiKey, workspaceUri, true, sessionId);
+        await grpcUnary(this.port, this.csrfToken,
+          `${LS_SERVICE}/UpdateWorkspaceTrust`, grpcFrame(trustProto), 5000);
+      } catch (e) { log.warn(`UpdateWorkspaceTrust: ${e.message}`); }
+      log.info(`Cascade workspace init complete for LS port=${this.port}`);
+    })().catch(e => {
+      lsEntry.workspaceInit = null;
+      throw e;
+    });
+    return lsEntry.workspaceInit;
+  }
+
   // ─── Cascade flow ────────────────────────────────────────
 
   /**
@@ -111,44 +152,13 @@ export class WindsurfClient {
 
     log.debug(`CascadeChat: uid=${modelUid} enum=${modelEnum} msgs=${messages.length}`);
 
-    // Share one session_id across all cascade-setup calls so workspace trust
-    // set in one call is visible to the next.
-    const sessionId = randomUUID();
+    // One-shot per-LS workspace init (idempotent; typically pre-warmed at
+    // LS startup). Falls back to a local session id if the LS entry is gone.
+    const lsEntry = getLsEntryByPort(this.port);
+    await this.warmupCascade().catch(() => {});
+    const sessionId = lsEntry?.sessionId || randomUUID();
 
     try {
-      // Step 0: Initialize panel state + workspace trust
-      // AddTrackedWorkspace wants an absolute filesystem path and stores it
-      // internally as a file:// URI. UpdateWorkspaceTrust is keyed on the URI.
-      const workspacePath = '/tmp/windsurf-workspace';
-      const workspaceUri = 'file:///tmp/windsurf-workspace';
-      try {
-        const initProto = buildInitializePanelStateRequest(this.apiKey, sessionId);
-        await grpcUnary(
-          this.port, this.csrfToken, `${LS_SERVICE}/InitializeCascadePanelState`, grpcFrame(initProto), 5000
-        );
-      } catch (e) {
-        log.warn(`InitializeCascadePanelState: ${e.message}`);
-      }
-
-      // Add workspace and mark trusted to avoid "untrusted workspace" errors
-      try {
-        const addWsProto = buildAddTrackedWorkspaceRequest(this.apiKey, workspacePath, sessionId);
-        await grpcUnary(
-          this.port, this.csrfToken, `${LS_SERVICE}/AddTrackedWorkspace`, grpcFrame(addWsProto), 5000
-        );
-      } catch (e) {
-        log.warn(`AddTrackedWorkspace: ${e.message}`);
-      }
-
-      try {
-        const trustProto = buildUpdateWorkspaceTrustRequest(this.apiKey, workspaceUri, true, sessionId);
-        await grpcUnary(
-          this.port, this.csrfToken, `${LS_SERVICE}/UpdateWorkspaceTrust`, grpcFrame(trustProto), 5000
-        );
-      } catch (e) {
-        log.warn(`UpdateWorkspaceTrust: ${e.message}`);
-      }
-
       // Step 1: Start cascade
       const startProto = buildStartCascadeRequest(this.apiKey, sessionId);
       const startResp = await grpcUnary(

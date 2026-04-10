@@ -84,6 +84,7 @@ export async function ensureLs(proxy = null) {
     const entry = {
       process: null, port, csrfToken: DEFAULT_CSRF,
       proxy: null, startedAt: Date.now(), ready: true,
+      workspaceInit: null, sessionId: null,
     };
     _pool.set(key, entry);
     return entry;
@@ -145,6 +146,11 @@ export async function ensureLs(proxy = null) {
   const entry = {
     process: proc, port, csrfToken: DEFAULT_CSRF,
     proxy, startedAt: Date.now(), ready: false,
+    // One-shot Cascade workspace init promise. cascadeChat() awaits this so
+    // the heavy InitializePanelState / AddTrackedWorkspace / UpdateWorkspaceTrust
+    // trio only runs once per LS lifetime instead of once per request.
+    workspaceInit: null,
+    sessionId: null,
   };
   _pool.set(key, entry);
 
@@ -183,6 +189,18 @@ export async function restartLsForProxy(proxy) {
 export function getLsFor(proxy) {
   const key = proxyKey(proxy);
   return _pool.get(key) || _pool.get('default') || null;
+}
+
+/**
+ * Look up an LS pool entry by its gRPC port. Used by WindsurfClient so it
+ * can attach per-LS state (one-shot cascade workspace init, persistent
+ * sessionId) without plumbing the entry through every call site.
+ */
+export function getLsEntryByPort(port) {
+  for (const entry of _pool.values()) {
+    if (entry.port === port) return entry;
+  }
+  return null;
 }
 
 // ─── Backward-compat API ───────────────────────────────────

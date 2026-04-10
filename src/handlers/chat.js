@@ -11,9 +11,56 @@ import { getLsFor, ensureLs } from '../langserver.js';
 import { config, log } from '../config.js';
 import { recordRequest } from '../dashboard/stats.js';
 import { isModelAllowed } from '../dashboard/model-access.js';
+import { cacheKey, cacheGet, cacheSet } from '../cache.js';
+
+const HEARTBEAT_MS = 15_000;
+const QUEUE_RETRY_MS = 1_000;
+const QUEUE_MAX_WAIT_MS = 30_000;
 
 function genId() {
   return 'chatcmpl-' + randomUUID().replace(/-/g, '').slice(0, 29);
+}
+
+// Rough token estimate (~4 chars/token). Used only to populate the
+// OpenAI-compatible `usage.prompt_tokens_details.cached_tokens` field so
+// upstream billing/dashboards (new-api) can recognise our local cache hits.
+function estimateTokens(messages) {
+  if (!Array.isArray(messages)) return 0;
+  let chars = 0;
+  for (const m of messages) {
+    if (typeof m?.content === 'string') chars += m.content.length;
+    else if (Array.isArray(m?.content)) {
+      for (const p of m.content) if (typeof p?.text === 'string') chars += p.text.length;
+    }
+  }
+  return Math.max(1, Math.ceil(chars / 4));
+}
+
+function cachedUsage(messages, completionText) {
+  const prompt = estimateTokens(messages);
+  const completion = Math.max(1, Math.ceil((completionText || '').length / 4));
+  return {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: prompt + completion,
+    prompt_tokens_details: { cached_tokens: prompt },
+    cached: true,
+  };
+}
+
+// Wait until getApiKey returns a non-null account, or until maxWaitMs expires.
+// Used when every account has momentarily exhausted its RPM budget so the
+// client is queued instead of getting a 503.
+async function waitForAccount(tried, signal, maxWaitMs = QUEUE_MAX_WAIT_MS) {
+  const deadline = Date.now() + maxWaitMs;
+  let acct = getApiKey(tried);
+  while (!acct) {
+    if (signal?.aborted) return null;
+    if (Date.now() >= deadline) return null;
+    await new Promise(r => setTimeout(r, QUEUE_RETRY_MS));
+    acct = getApiKey(tried);
+  }
+  return acct;
 }
 
 export async function handleChatCompletions(body) {
@@ -42,9 +89,27 @@ export async function handleChatCompletions(body) {
 
   const chatId = genId();
   const created = Math.floor(Date.now() / 1000);
+  const ckey = cacheKey(body);
 
   if (stream) {
-    return streamResponse(chatId, created, displayModel, modelKey, messages, modelEnum, modelUid, useCascade);
+    return streamResponse(chatId, created, displayModel, modelKey, messages, modelEnum, modelUid, useCascade, ckey);
+  }
+
+  // ── Local response cache (exact body match) ─────────────
+  const cached = cacheGet(ckey);
+  if (cached) {
+    log.info(`Chat: cache HIT model=${displayModel} flow=non-stream`);
+    recordRequest(displayModel, true, 0, null);
+    const message = { role: 'assistant', content: cached.text || null };
+    if (cached.thinking) message.reasoning_content = cached.thinking;
+    return {
+      status: 200,
+      body: {
+        id: chatId, object: 'chat.completion', created, model: displayModel,
+        choices: [{ index: 0, message, finish_reason: 'stop' }],
+        usage: cachedUsage(messages, cached.text),
+      },
+    };
   }
 
   // Non-stream: retry with a different account on model-not-available errors
@@ -52,7 +117,7 @@ export async function handleChatCompletions(body) {
   let lastErr = null;
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const acct = getApiKey(tried);
+    const acct = await waitForAccount(tried, null);
     if (!acct) break;
     tried.push(acct.apiKey);
     await ensureLs(acct.proxy);
@@ -60,7 +125,7 @@ export async function handleChatCompletions(body) {
     if (!ls) { lastErr = { status: 503, body: { error: { message: 'No LS instance available', type: 'ls_unavailable' } } }; break; }
     log.info(`Chat: model=${displayModel} flow=${useCascade ? 'cascade' : 'legacy'} attempt=${attempt + 1} account=${acct.email} ls=${ls.port}`);
     const client = new WindsurfClient(acct.apiKey, ls.port, ls.csrfToken);
-    const result = await nonStreamResponse(client, chatId, created, displayModel, modelKey, messages, modelEnum, modelUid, useCascade, acct.apiKey);
+    const result = await nonStreamResponse(client, chatId, created, displayModel, modelKey, messages, modelEnum, modelUid, useCascade, acct.apiKey, ckey);
     if (result.status === 200) return result;
     lastErr = result;
     if (result.body?.error?.type !== 'model_not_available') break;
@@ -69,7 +134,7 @@ export async function handleChatCompletions(body) {
   return lastErr || { status: 503, body: { error: { message: 'No active accounts available', type: 'pool_exhausted' } } };
 }
 
-async function nonStreamResponse(client, id, created, model, modelKey, messages, modelEnum, modelUid, useCascade, apiKey) {
+async function nonStreamResponse(client, id, created, model, modelKey, messages, modelEnum, modelUid, useCascade, apiKey, ckey) {
   const startTime = Date.now();
   try {
     let allText = '';
@@ -92,15 +157,25 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
     updateCapability(apiKey, modelKey, true, 'success');
     recordRequest(model, true, Date.now() - startTime, apiKey);
 
+    // Store in cache for next identical request
+    if (ckey) cacheSet(ckey, { text: allText, thinking: allThinking });
+
     const message = { role: 'assistant', content: allText || null };
     if (allThinking) message.reasoning_content = allThinking;
 
+    const promptTok = estimateTokens(messages);
+    const completionTok = Math.max(1, Math.ceil((allText.length + allThinking.length) / 4));
     return {
       status: 200,
       body: {
         id, object: 'chat.completion', created, model,
         choices: [{ index: 0, message, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        usage: {
+          prompt_tokens: promptTok,
+          completion_tokens: completionTok,
+          total_tokens: promptTok + completionTok,
+          prompt_tokens_details: { cached_tokens: 0 },
+        },
       },
     };
   } catch (err) {
@@ -110,8 +185,6 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
     const isRateLimit = /rate limit|rate_limit|too many requests|quota/i.test(err.message);
     if (isAuthFail) reportError(apiKey);
     if (isRateLimit) { markRateLimited(apiKey); err.isModelError = true; }
-    // Record capability: only mark as incapable if it's a model-level denial,
-    // not transient or rate-limit.
     if (err.isModelError && !isRateLimit) {
       updateCapability(apiKey, modelKey, false, 'model_error');
     }
@@ -124,7 +197,7 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
   }
 }
 
-function streamResponse(id, created, model, modelKey, messages, modelEnum, modelUid, useCascade) {
+function streamResponse(id, created, model, modelKey, messages, modelEnum, modelUid, useCascade, ckey) {
   return {
     status: 200,
     stream: true,
@@ -146,6 +219,42 @@ function streamResponse(id, created, model, modelKey, messages, modelEnum, model
         if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
+      // SSE heartbeat: keep the TCP/HTTP connection alive through any silent
+      // period (LS warmup, Cascade "thinking", queue wait). `:` prefix is a
+      // comment line per the SSE spec — clients ignore it, intermediaries see
+      // bytes flowing, idle timers get reset.
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(': ping\n\n');
+      }, HEARTBEAT_MS);
+      const stopHeartbeat = () => clearInterval(heartbeat);
+      res.on('close', stopHeartbeat);
+
+      // ── Cache hit: replay stored response as a fake stream ──
+      const cached = cacheGet(ckey);
+      if (cached) {
+        log.info(`Chat: cache HIT model=${model} flow=stream`);
+        recordRequest(model, true, 0, null);
+        try {
+          send({ id, object: 'chat.completion.chunk', created, model,
+            choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
+          if (cached.thinking) {
+            send({ id, object: 'chat.completion.chunk', created, model,
+              choices: [{ index: 0, delta: { reasoning_content: cached.thinking }, finish_reason: null }] });
+          }
+          if (cached.text) {
+            send({ id, object: 'chat.completion.chunk', created, model,
+              choices: [{ index: 0, delta: { content: cached.text }, finish_reason: null }] });
+          }
+          send({ id, object: 'chat.completion.chunk', created, model,
+            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+            usage: cachedUsage(messages, cached.text) });
+          if (!res.writableEnded) { res.write('data: [DONE]\n\n'); res.end(); }
+        } finally {
+          stopHeartbeat();
+        }
+        return;
+      }
+
       const startTime = Date.now();
       const tried = [];
       let hadSuccess = false;
@@ -154,6 +263,10 @@ function streamResponse(id, created, model, modelKey, messages, modelEnum, model
       let lastErr = null;
       const maxAttempts = 3;
 
+      // Accumulate chunks so we can cache a successful response at the end.
+      let accText = '';
+      let accThinking = '';
+
       const onChunk = (chunk) => {
         if (!rolePrinted) {
           rolePrinted = true;
@@ -161,72 +274,100 @@ function streamResponse(id, created, model, modelKey, messages, modelEnum, model
             choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
         }
         hadSuccess = true;
-        if (chunk.text) send({ id, object: 'chat.completion.chunk', created, model,
-          choices: [{ index: 0, delta: { content: chunk.text }, finish_reason: null }] });
-        if (chunk.thinking) send({ id, object: 'chat.completion.chunk', created, model,
-          choices: [{ index: 0, delta: { reasoning_content: chunk.thinking }, finish_reason: null }] });
+        if (chunk.text) {
+          accText += chunk.text;
+          send({ id, object: 'chat.completion.chunk', created, model,
+            choices: [{ index: 0, delta: { content: chunk.text }, finish_reason: null }] });
+        }
+        if (chunk.thinking) {
+          accThinking += chunk.thinking;
+          send({ id, object: 'chat.completion.chunk', created, model,
+            choices: [{ index: 0, delta: { reasoning_content: chunk.thinking }, finish_reason: null }] });
+        }
       };
 
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (abortController.signal.aborted) return;
-        const acct = getApiKey(tried);
-        if (!acct) break;
-        tried.push(acct.apiKey);
-        currentApiKey = acct.apiKey;
-        try { await ensureLs(acct.proxy); } catch (e) { lastErr = e; break; }
-        const ls = getLsFor(acct.proxy);
-        if (!ls) { lastErr = new Error('No LS instance available'); break; }
-        log.info(`Chat: model=${model} flow=${useCascade ? 'cascade' : 'legacy'} stream=true attempt=${attempt + 1} account=${acct.email} ls=${ls.port}`);
-        const client = new WindsurfClient(acct.apiKey, ls.port, ls.csrfToken);
-        try {
-          if (useCascade) {
-            await client.cascadeChat(messages, modelEnum, modelUid, { onChunk, signal: abortController.signal });
-          } else {
-            await client.rawGetChatMessage(messages, modelEnum, modelUid, { onChunk });
+      try {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          if (abortController.signal.aborted) return;
+          const acct = await waitForAccount(tried, abortController.signal);
+          if (!acct) break;
+          tried.push(acct.apiKey);
+          currentApiKey = acct.apiKey;
+          try { await ensureLs(acct.proxy); } catch (e) { lastErr = e; break; }
+          const ls = getLsFor(acct.proxy);
+          if (!ls) { lastErr = new Error('No LS instance available'); break; }
+          log.info(`Chat: model=${model} flow=${useCascade ? 'cascade' : 'legacy'} stream=true attempt=${attempt + 1} account=${acct.email} ls=${ls.port}`);
+          const client = new WindsurfClient(acct.apiKey, ls.port, ls.csrfToken);
+          try {
+            if (useCascade) {
+              await client.cascadeChat(messages, modelEnum, modelUid, { onChunk, signal: abortController.signal });
+            } else {
+              await client.rawGetChatMessage(messages, modelEnum, modelUid, { onChunk });
+            }
+            // success
+            if (hadSuccess) reportSuccess(currentApiKey);
+            updateCapability(currentApiKey, modelKey, true, 'success');
+            recordRequest(model, true, Date.now() - startTime, currentApiKey);
+            if (!rolePrinted) {
+              send({ id, object: 'chat.completion.chunk', created, model,
+                choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
+            }
+            send({ id, object: 'chat.completion.chunk', created, model,
+              choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+            // OpenAI-compat: emit a terminal usage chunk so downstream
+            // billing (new-api) sees non-zero completion_tokens for streams.
+            // stream_options.include_usage-style chunk: empty choices + usage.
+            {
+              const promptTok = estimateTokens(messages);
+              const completionTok = Math.max(1, Math.ceil((accText.length + accThinking.length) / 4));
+              send({ id, object: 'chat.completion.chunk', created, model,
+                choices: [],
+                usage: {
+                  prompt_tokens: promptTok,
+                  completion_tokens: completionTok,
+                  total_tokens: promptTok + completionTok,
+                  prompt_tokens_details: { cached_tokens: 0 },
+                } });
+            }
+            if (!res.writableEnded) { res.write('data: [DONE]\n\n'); res.end(); }
+            if (ckey && (accText || accThinking)) {
+              cacheSet(ckey, { text: accText, thinking: accThinking });
+            }
+            return;
+          } catch (err) {
+            lastErr = err;
+            const isAuthFail = /unauthenticated|invalid api key|invalid_grant|permission_denied.*account/i.test(err.message);
+            const isRateLimit = /rate limit|rate_limit|too many requests|quota/i.test(err.message);
+            if (isAuthFail) reportError(currentApiKey);
+            if (isRateLimit) { markRateLimited(currentApiKey); err.isModelError = true; }
+            if (err.isModelError && !isRateLimit) {
+              updateCapability(currentApiKey, modelKey, false, 'model_error');
+            }
+            // Retry only if nothing has been streamed yet AND it's a model error
+            if (!hadSuccess && err.isModelError) {
+              log.warn(`Account ${acct.email} failed (${isRateLimit ? 'rate_limit' : 'model_error'}), trying next`);
+              continue;
+            }
+            break;
           }
-          // success
-          if (hadSuccess) reportSuccess(currentApiKey);
-          updateCapability(currentApiKey, modelKey, true, 'success');
-          recordRequest(model, true, Date.now() - startTime, currentApiKey);
+        }
+
+        // All attempts failed
+        log.error('Stream error after retries:', lastErr?.message);
+        recordRequest(model, false, Date.now() - startTime, currentApiKey);
+        try {
           if (!rolePrinted) {
             send({ id, object: 'chat.completion.chunk', created, model,
               choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
           }
           send({ id, object: 'chat.completion.chunk', created, model,
-            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
-          if (!res.writableEnded) { res.write('data: [DONE]\n\n'); res.end(); }
-          return;
-        } catch (err) {
-          lastErr = err;
-          const isAuthFail = /unauthenticated|invalid api key|invalid_grant|permission_denied.*account/i.test(err.message);
-          const isRateLimit = /rate limit|rate_limit|too many requests|quota/i.test(err.message);
-          if (isAuthFail) reportError(currentApiKey);
-          if (isRateLimit) { markRateLimited(currentApiKey); err.isModelError = true; }
-          if (err.isModelError && !isRateLimit) {
-            updateCapability(currentApiKey, modelKey, false, 'model_error');
-          }
-          // Retry only if nothing has been streamed yet AND it's a model error
-          if (!hadSuccess && err.isModelError) {
-            log.warn(`Account ${acct.email} failed (${isRateLimit ? 'rate_limit' : 'model_error'}), trying next`);
-            continue;
-          }
-          break;
-        }
+            choices: [{ index: 0, delta: { content: `\n[Error: ${lastErr?.message || 'no accounts'}]` }, finish_reason: 'stop' }] });
+          res.write('data: [DONE]\n\n');
+        } catch {}
+        if (!res.writableEnded) res.end();
+      } finally {
+        stopHeartbeat();
       }
-
-      // All attempts failed
-      log.error('Stream error after retries:', lastErr?.message);
-      recordRequest(model, false, Date.now() - startTime, currentApiKey);
-      try {
-        if (!rolePrinted) {
-          send({ id, object: 'chat.completion.chunk', created, model,
-            choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
-        }
-        send({ id, object: 'chat.completion.chunk', created, model,
-          choices: [{ index: 0, delta: { content: `\n[Error: ${lastErr?.message || 'no accounts'}]` }, finish_reason: 'stop' }] });
-        res.write('data: [DONE]\n\n');
-      } catch {}
-      if (!res.writableEnded) res.end();
     },
   };
 }

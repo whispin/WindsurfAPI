@@ -21,6 +21,24 @@ const ACCOUNTS_FILE = join(process.cwd(), 'accounts.json');
 const accounts = [];
 let _roundRobinIndex = 0;
 
+// Per-tier requests-per-minute limits. Used for both filter-by-cap and
+// weighted selection (accounts with more headroom are preferred).
+const TIER_RPM = { pro: 60, free: 10, unknown: 20, expired: 0 };
+const RPM_WINDOW_MS = 60 * 1000;
+
+function rpmLimitFor(account) {
+  return TIER_RPM[account.tier || 'unknown'] ?? 20;
+}
+
+function pruneRpmHistory(account, now) {
+  if (!account._rpmHistory) account._rpmHistory = [];
+  const cutoff = now - RPM_WINDOW_MS;
+  while (account._rpmHistory.length && account._rpmHistory[0] < cutoff) {
+    account._rpmHistory.shift();
+  }
+  return account._rpmHistory.length;
+}
+
 function saveAccounts() {
   try {
     const data = accounts.map(a => ({
@@ -186,25 +204,46 @@ export function removeAccount(id) {
   return true;
 }
 
-// ─── Account selection (round-robin) ───────────────────────
+// ─── Account selection (tier-weighted RPM) ─────────────────
 
 /**
- * Get next available API key via round-robin.
- * Skips accounts with status != 'active'.
+ * Pick the next available account based on per-tier RPM headroom.
+ *
+ * Strategy:
+ *   1. Keep only active, non-excluded, non-rate-limited accounts.
+ *   2. Drop accounts whose 60s request count already equals their tier cap.
+ *   3. Pick the account with the highest remaining-ratio (most idle).
+ *   4. Record the selection timestamp on that account's sliding window.
+ *
+ * Returns null when every account is temporarily full — callers should
+ * wait a moment and retry (see handlers/chat.js queue loop).
  */
 export function getApiKey(excludeKeys = []) {
   const now = Date.now();
-  const active = accounts.filter(a =>
-    a.status === 'active' &&
-    !excludeKeys.includes(a.apiKey) &&
-    !(a.rateLimitedUntil && a.rateLimitedUntil > now)
-  );
-  if (active.length === 0) return null;
+  const candidates = [];
+  for (const a of accounts) {
+    if (a.status !== 'active') continue;
+    if (excludeKeys.includes(a.apiKey)) continue;
+    if (a.rateLimitedUntil && a.rateLimitedUntil > now) continue;
+    const limit = rpmLimitFor(a);
+    if (limit <= 0) continue; // expired tier
+    const used = pruneRpmHistory(a, now);
+    if (used >= limit) continue;
+    candidates.push({ account: a, used, limit });
+  }
+  if (candidates.length === 0) return null;
 
-  _roundRobinIndex = _roundRobinIndex % active.length;
-  const account = active[_roundRobinIndex];
-  _roundRobinIndex = (_roundRobinIndex + 1) % active.length;
+  // Pick the account with the highest remaining ratio. Ties broken by
+  // least-recently-used so a burst spreads across accounts evenly.
+  candidates.sort((x, y) => {
+    const rx = (x.limit - x.used) / x.limit;
+    const ry = (y.limit - y.used) / y.limit;
+    if (ry !== rx) return ry - rx;
+    return (x.account.lastUsed || 0) - (y.account.lastUsed || 0);
+  });
 
+  const { account } = candidates[0];
+  account._rpmHistory.push(now);
   account.lastUsed = now;
   return {
     id: account.id, email: account.email, apiKey: account.apiKey,
@@ -214,15 +253,38 @@ export function getApiKey(excludeKeys = []) {
 }
 
 /**
+ * Snapshot of per-account RPM usage, for dashboard display.
+ */
+export function getRpmStats() {
+  const now = Date.now();
+  const out = {};
+  for (const a of accounts) {
+    const limit = rpmLimitFor(a);
+    const used = pruneRpmHistory(a, now);
+    out[a.id] = { used, limit, tier: a.tier || 'unknown' };
+  }
+  return out;
+}
+
+/**
  * Ensure an LS instance exists for an account's proxy.
  * Used on startup and after adding new accounts so chat requests don't race
  * the first-time LS spawn.
  */
 export async function ensureLsForAccount(accountId) {
   const { ensureLs } = await import('./langserver.js');
+  const account = accounts.find(a => a.id === accountId);
   const proxy = getEffectiveProxy(accountId) || null;
   try {
-    await ensureLs(proxy);
+    const ls = await ensureLs(proxy);
+    // Pre-warm the Cascade workspace init so the first real request on this
+    // LS doesn't pay the 3-roundtrip setup cost. Fire-and-forget — chat
+    // requests still await the same Promise if it hasn't finished yet.
+    if (ls && account?.apiKey) {
+      const { WindsurfClient } = await import('./client.js');
+      const client = new WindsurfClient(account.apiKey, ls.port, ls.csrfToken);
+      client.warmupCascade().catch(e => log.warn(`Cascade warmup failed: ${e.message}`));
+    }
   } catch (e) {
     log.error(`Failed to start LS for account ${accountId}: ${e.message}`);
   }
@@ -272,22 +334,28 @@ export function isAuthenticated() {
 
 export function getAccountList() {
   const now = Date.now();
-  return accounts.map(a => ({
-    id: a.id,
-    email: a.email,
-    method: a.method,
-    status: a.status,
-    errorCount: a.errorCount,
-    lastUsed: a.lastUsed ? new Date(a.lastUsed).toISOString() : null,
-    addedAt: new Date(a.addedAt).toISOString(),
-    keyPrefix: a.apiKey.slice(0, 8) + '...',
-    apiKey: a.apiKey,
-    tier: a.tier || 'unknown',
-    capabilities: a.capabilities || {},
-    lastProbed: a.lastProbed || 0,
-    rateLimitedUntil: a.rateLimitedUntil || 0,
-    rateLimited: !!(a.rateLimitedUntil && a.rateLimitedUntil > now),
-  }));
+  return accounts.map(a => {
+    const rpmLimit = rpmLimitFor(a);
+    const rpmUsed = pruneRpmHistory(a, now);
+    return {
+      id: a.id,
+      email: a.email,
+      method: a.method,
+      status: a.status,
+      errorCount: a.errorCount,
+      lastUsed: a.lastUsed ? new Date(a.lastUsed).toISOString() : null,
+      addedAt: new Date(a.addedAt).toISOString(),
+      keyPrefix: a.apiKey.slice(0, 8) + '...',
+      apiKey: a.apiKey,
+      tier: a.tier || 'unknown',
+      capabilities: a.capabilities || {},
+      lastProbed: a.lastProbed || 0,
+      rateLimitedUntil: a.rateLimitedUntil || 0,
+      rateLimited: !!(a.rateLimitedUntil && a.rateLimitedUntil > now),
+      rpmUsed,
+      rpmLimit,
+    };
+  });
 }
 
 /**
