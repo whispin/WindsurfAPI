@@ -386,6 +386,37 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
     }
   }
 
+  // ─── OAuth login (Google / GitHub via Firebase) ────────
+  // POST /oauth-login — accepts Firebase idToken from client-side OAuth
+  if (subpath === '/oauth-login' && method === 'POST') {
+    try {
+      const { idToken, refreshToken, email, provider, autoAdd } = body;
+      if (!idToken) return json(res, 400, { error: '缺少 idToken' });
+
+      const proxy = getProxyConfig().global;
+      const { apiKey, name } = await reRegisterWithCodeium(idToken, proxy);
+
+      let account = null;
+      if (autoAdd !== false) {
+        account = addAccountByKey(apiKey, name || email || provider || 'OAuth');
+        if (refreshToken) account.refreshToken = refreshToken;
+        ensureLsForAccount(account.id)
+          .then(() => probeAccount(account.id))
+          .catch(e => log.warn(`OAuth auto-probe failed: ${e.message}`));
+      }
+
+      return json(res, 200, {
+        success: true,
+        apiKey,
+        name,
+        email: email || '',
+        account: account ? { id: account.id, email: account.email, status: account.status } : null,
+      });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
+  }
+
   // ─── Rate Limit Check ──────────────────────────────────
   // POST /accounts/:id/rate-limit — check capacity for a single account
   const rateLimitCheck = subpath.match(/^\/accounts\/([^/]+)\/rate-limit$/);
