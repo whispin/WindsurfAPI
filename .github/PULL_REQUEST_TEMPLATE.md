@@ -20,5 +20,5 @@
 
 - [ ] 代码风格和现有文件一致 / Code style matches existing files
 - [ ] 没有引入 npm 依赖 / No new npm dependencies (project is zero-dep)
-- [ ] 涉及 LS binary 协议时 同步更新了 CLAUDE.md / Updated CLAUDE.md if LS protocol assumptions changed
+- [ ] 涉及 LS binary 协议改动时 在 PR 描述里注明字段号来源 / If touching LS protocol, document field-number source in the PR description
 - [ ] 涉及 dashboard UI 用 App.confirm / App.prompt 不用浏览器原生 alert/confirm / Uses App.confirm / App.prompt, not native dialogs (if dashboard)

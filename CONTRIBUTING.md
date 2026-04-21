@@ -9,7 +9,7 @@
 - 想加功能请先开 issue 讨论 免得撸完 PR 方向不对被打回
 - 想修 bug 直接提 PR 就行 小改不用先开 issue
 - 想改 README / docs 直接 PR
-- 不清楚范围 看下 [CLAUDE.md](CLAUDE.md) 里的架构说明
+- 不清楚项目结构 看 [README](README.md) 的 "它到底在干嘛" 章节 和 `src/` 下每个文件顶部的注释
 
 ### 代码风格
 
@@ -17,7 +17,7 @@
 - 用 ES Modules (`import/export`) 和 async/await
 - 缩进 2 空格 单引号 带分号
 - 新文件放 `src/` 对应目录 命名和现有保持一致
-- LS 协议相关改动（`windsurf.js` / `proto.js` / `grpc.js`）如果改了字段号 记得同步 CLAUDE.md
+- LS 协议相关改动（`windsurf.js` / `proto.js` / `grpc.js`）改字段号时 在 PR 描述里注明来源（参考 proto 文件 / 反编译发现等）
 - Dashboard UI 不要用 `alert()` / `confirm()` / `prompt()` 用 `App.confirm()` / `App.prompt()`
 
 ### Commit & PR
@@ -48,7 +48,7 @@ GitHub Actions 跑 `node --check` 做语法校验 过了就可以 review。
 - Got a feature idea? Open an issue first so we can discuss direction.
 - Fixing a bug? Just send the PR.
 - README / docs changes? Just send the PR.
-- Unclear about project scope? Read [CLAUDE.md](CLAUDE.md) for architecture.
+- Unclear about project structure? See [README](README.md) "What it does" section and the header comments in each `src/` file.
 
 ### Code style
 
@@ -56,7 +56,7 @@ GitHub Actions 跑 `node --check` 做语法校验 过了就可以 review。
 - ES Modules (`import/export`), async/await.
 - 2-space indent, single quotes, semicolons.
 - Put new files under `src/` in the matching directory. Follow existing naming.
-- LS protocol changes (`windsurf.js` / `proto.js` / `grpc.js`): update CLAUDE.md if field numbers change.
+- LS protocol changes (`windsurf.js` / `proto.js` / `grpc.js`): note the source of any new field numbers in the PR description.
 - Dashboard UI: use `App.confirm()` / `App.prompt()` instead of native `alert()` / `confirm()` / `prompt()`.
 
 ### Commits & PRs
