@@ -43,7 +43,11 @@ export const config = {
   logLevel: process.env.LOG_LEVEL || 'info',
 
   // Language server
-  lsBinaryPath: process.env.LS_BINARY_PATH || '/opt/windsurf/language_server_linux_x64',
+  lsBinaryPath: process.env.LS_BINARY_PATH || (
+    process.platform === 'darwin'
+      ? `${process.env.HOME}/.windsurf/language_server_macos_${process.arch === 'arm64' ? 'arm' : 'x64'}`
+      : '/opt/windsurf/language_server_linux_x64'
+  ),
   lsPort: parseInt(process.env.LS_PORT || '42100', 10),
 
   // Dashboard
