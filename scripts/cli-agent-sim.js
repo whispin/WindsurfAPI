@@ -125,9 +125,13 @@ async function chatCompletion(messages, opts = {}) {
         });
       });
 
-      res.on('error', reject);
+      res.on('error', (e) => {
+        reject(Object.assign(e, { _source: 'res.error' }));
+      });
     });
-    req.on('error', reject);
+    req.on('error', (e) => {
+      reject(Object.assign(e, { _source: 'req.error' }));
+    });
     req.write(JSON.stringify(body));
     req.end();
   });
@@ -136,19 +140,19 @@ async function chatCompletion(messages, opts = {}) {
 // ── Test Scenarios ──────────────────────────────────
 
 async function testBasicChat() {
-  logEntry({ type: 'test', summary: 'Basic chat — single turn streaming' });
+  logEntry({ type: 'test', summary: 'Basic chat — single turn' });
   const start = Date.now();
   const resp = await chatCompletion([
     { role: 'user', content: 'Reply with exactly: "Hello from WindsurfAPI". Nothing else.' },
-  ]);
+  ], { stream: false });
   const elapsed = Date.now() - start;
+  const text = resp.data?.choices?.[0]?.message?.content || resp.text || '';
   logEntry({
-    type: 'response', summary: `${resp.text.slice(0, 80)}... (${elapsed}ms)`,
-    model: MODEL, elapsed, textLen: resp.text.length,
-    finishReason: resp.finishReason, usage: resp.usage,
-    retryAfter: resp.headers?.['retry-after'] || null,
+    type: 'response', summary: `${text.slice(0, 80)} (${elapsed}ms)`,
+    model: MODEL, elapsed, textLen: text.length,
+    usage: resp.data?.usage || resp.usage,
   });
-  return resp;
+  return { ...resp, text };
 }
 
 async function testMultiTurn() {
@@ -158,17 +162,19 @@ async function testMultiTurn() {
     { role: 'user', content: 'My name is TestUser42. Remember this.' },
   ];
 
-  const r1 = await chatCompletion(messages);
-  logEntry({ type: 'response', summary: `Turn 1: ${r1.text.slice(0, 60)}` });
+  const r1 = await chatCompletion(messages, { stream: false });
+  const r1text = r1.data?.choices?.[0]?.message?.content || '';
+  logEntry({ type: 'response', summary: `Turn 1: ${r1text.slice(0, 60)}` });
 
-  messages.push({ role: 'assistant', content: r1.text });
+  messages.push({ role: 'assistant', content: r1text });
   messages.push({ role: 'user', content: 'What is my name? Reply with just the name.' });
 
-  const r2 = await chatCompletion(messages);
-  const remembered = r2.text.includes('TestUser42');
+  const r2 = await chatCompletion(messages, { stream: false });
+  const r2text = r2.data?.choices?.[0]?.message?.content || '';
+  const remembered = r2text.includes('TestUser42');
   logEntry({
     type: 'response',
-    summary: `Turn 2: ${r2.text.slice(0, 60)} — context ${remembered ? 'RETAINED' : 'LOST'}`,
+    summary: `Turn 2: ${r2text.slice(0, 60)} — context ${remembered ? 'RETAINED' : 'LOST'}`,
     contextRetained: remembered,
   });
   return remembered;
@@ -194,13 +200,15 @@ async function testToolCalls() {
 
   const resp = await chatCompletion([
     { role: 'user', content: 'Read the file at ./package.json using the read_file tool.' },
-  ], { tools });
+  ], { tools, stream: false });
 
-  const hasToolCall = resp.toolCalls.length > 0 || resp.finishReason === 'tool_calls';
+  const msg = resp.data?.choices?.[0]?.message;
+  const tcs = msg?.tool_calls || [];
+  const hasToolCall = tcs.length > 0 || resp.data?.choices?.[0]?.finish_reason === 'tool_calls';
   logEntry({
     type: 'response',
-    summary: `Tool calls: ${resp.toolCalls.length}, finish=${resp.finishReason}`,
-    toolCalls: resp.toolCalls.map(tc => ({ name: tc.name, args: tc.arguments?.slice(0, 100) })),
+    summary: `Tool calls: ${tcs.length}, finish=${resp.data?.choices?.[0]?.finish_reason}`,
+    toolCalls: tcs.map(tc => ({ name: tc.function?.name, args: tc.function?.arguments?.slice(0, 100) })),
     hasToolCall,
   });
   return hasToolCall;
@@ -275,15 +283,16 @@ async function testProjectWriting() {
   const resp = await chatCompletion([
     { role: 'system', content: 'You are a senior Python developer. Write clean, production-ready code.' },
     { role: 'user', content: 'Write a Python function called `fibonacci(n)` that returns the nth Fibonacci number using memoization. Include type hints and a docstring. Output ONLY the code, no explanation.' },
-  ]);
+  ], { stream: false });
 
-  const hasPython = resp.text.includes('def fibonacci') || resp.text.includes('fibonacci');
+  const text = resp.data?.choices?.[0]?.message?.content || '';
+  const hasPython = text.includes('def fibonacci') || text.includes('fibonacci');
   logEntry({
     type: 'response',
-    summary: `Code gen: ${resp.text.length} chars, has_fibonacci=${hasPython}`,
-    textLen: resp.text.length,
+    summary: `Code gen: ${text.length} chars, has_fibonacci=${hasPython}`,
+    textLen: text.length,
     hasPython,
-    codePreview: resp.text.slice(0, 200),
+    codePreview: text.slice(0, 200),
   });
   return hasPython;
 }
