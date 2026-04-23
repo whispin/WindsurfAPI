@@ -110,7 +110,10 @@ async function chatCompletion(messages, opts = {}) {
       });
 
       res.on('end', () => {
-        if (lineBuf.trim()) processLine(lineBuf.trim());
+        for (const line of lineBuf.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed) processLine(trimmed);
+        }
         resolve({
           status: res.statusCode,
           text,
