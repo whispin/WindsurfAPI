@@ -37,7 +37,7 @@ flowchart LR
         D[Account Pool<br>Round-Robin<br>Rate Limit<br>Failover]
     end
 
-    E[Language Server<br>(Windsurf binary)]
+    E["Language Server<br>(Windsurf binary)"]
     F[Windsurf Cloud<br>server.self-serve.windsurf.com]
 
     A -->|"/v1/chat/completions"<br>OpenAI JSON + SSE| C
