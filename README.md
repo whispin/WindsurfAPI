@@ -366,6 +366,7 @@ A: 只有 `gpt-4o-mini` 和 `gemini-2.5-flash`，其他全要 Pro。
   修复 Pro 层级的模型合并逻辑：原本只看硬编码清单，云端动态拉回来的模型没进 tier 表，Pro 账号在 Cursor / Cherry Studio 里看不到新上线的模型。
 - [@colin1112a](https://github.com/colin1112a) — [PR #13](https://github.com/dwgx/WindsurfAPI/pull/13)
   一次性审了 15 个安全 / 并发 / 资源管理 bug：XSS 转义、shell 注入、OOM 防护、auth 路由位置、gRPC 双回调、LS pool 竞态、HTTP/2 帧大小上限等。后续我们在这个基础上又加固了 JS-level `escJsAttr`、`_pending` 合并并发 `ensureLs`、LS 退出时释放 pooled session，并延伸修了 Antigravity 审计发现的 6 个问题。
+- [@xyiqq](https://github.com/xyiqq) — 捐赠 10 个 Pro 账号进共享账号池。
 
 想加入这份名单？欢迎提 [issue](https://github.com/dwgx/WindsurfAPI/issues) 或 [pull request](https://github.com/dwgx/WindsurfAPI/pulls)。Dashboard 左侧有"致谢"面板 能看到同样的信息。
 
