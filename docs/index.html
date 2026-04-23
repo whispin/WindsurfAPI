@@ -1,409 +1,253 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hans">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Windsurf API · 把 Windsurf 變成 OpenAI + Anthropic 相容端點</title>
-<meta name="description" content="無頭運行 Windsurf 的 AI 模型，同時支援 /v1/chat/completions 與 /v1/messages 雙協定。Claude Code、Cursor、Cline 直接連。零 npm 依賴。">
-<meta name="theme-color" content="#FAF9F5">
-<meta property="og:title" content="Windsurf API">
-<meta property="og:description" content="雙協定 · 零依賴 · Docker 就緒">
-<meta property="og:type" content="website">
+<title>WindsurfAPI · 双协议 AI 模型网关</title>
+<meta name="description" content="把 Windsurf 107+ AI 模型变成 OpenAI + Anthropic 双协议 API。Claude Code、Cursor、Cline 直连。零依赖。">
+<meta name="theme-color" content="#0a0a0f">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E3%80%B0%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
 :root{
-  --bg:#FAF9F5;
-  --bg-alt:#F5F2EB;
-  --paper:#FFFFFF;
-  --ink:#1A1612;
-  --ink-soft:#3D362C;
-  --muted:#6B6556;
-  --muted-soft:#A09888;
-  --rule:#E7E2D4;
-  --rule-soft:#EFEBDF;
-  --coral:#CC785C;
-  --coral-deep:#A05234;
-  --coral-soft:#F2DCD0;
-  --coral-wash:#FBF1EB;
-  --plum:#8B6FB0;
-  --sand:#D4A574;
-
-  --serif:'Charter','Iowan Old Style','Palatino Linotype','Palatino','URW Palladio L','P052','Noto Serif TC',Georgia,serif;
-  --sans:'Helvetica Neue','Segoe UI',-apple-system,BlinkMacSystemFont,'PingFang TC','Microsoft JhengHei',system-ui,sans-serif;
-  --mono:'SF Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  --bg:#0a0a0f;--surface:#111119;--surface2:#16161f;
+  --coral:#ff6b4a;--coral-dim:#cc4a2e;--coral-glow:rgba(255,107,74,.15);
+  --teal:#4ecdc4;--teal-dim:#2a8a84;--teal-glow:rgba(78,205,196,.12);
+  --green:#b8c99a;--purple:#a78bfa;--amber:#f5a623;
+  --text:#e8e6e3;--text-dim:#8a8680;--text-muted:#555;
+  --border:#1e1e2a;--border-bright:#2a2a3a;
+  --mono:'SF Mono','JetBrains Mono','Cascadia Code',ui-monospace,Consolas,monospace;
+  --sans:'Helvetica Neue','Segoe UI',-apple-system,system-ui,sans-serif;
+  --display:'Georgia','Palatino','Noto Serif SC',serif;
 }
-body{
-  background:var(--bg);color:var(--ink);
-  font-family:var(--sans);font-size:16.5px;line-height:1.72;
-  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-  letter-spacing:.01em;
-}
-body::before{
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(ellipse at 25% 0%,rgba(204,120,92,.03),transparent 55%),
-    radial-gradient(ellipse at 80% 100%,rgba(139,111,176,.02),transparent 50%);
-}
-body::after{
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.02'/%3E%3C/svg%3E");
-  background-size:200px 200px;
-}
-a{color:var(--coral);text-decoration:none;transition:color .2s ease}
-a:hover{color:var(--coral-deep)}
-code{font-family:var(--mono);font-size:.88em;background:var(--rule-soft);padding:.1em .35em;border-radius:3px;color:var(--ink-soft)}
-.container{max-width:1080px;margin:0 auto;padding:0 2rem;position:relative}
-.narrow{max-width:780px;margin:0 auto;padding:0 2rem}
-section{padding:5.5rem 0}
-h1,h2,h3,h4{font-family:var(--serif);font-weight:500;letter-spacing:-.015em;color:var(--ink)}
-.kicker{font-family:var(--sans);font-size:.74rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--coral);margin-bottom:.9rem;opacity:.85}
-.section-title{font-size:2.4rem;line-height:1.14;margin-bottom:.9rem;font-weight:500}
-.section-title em{font-style:italic;color:var(--coral);font-weight:400}
-.section-sub{color:var(--muted);font-size:1.02rem;max-width:540px;margin-bottom:2.5rem;line-height:1.65}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.7;overflow-x:hidden}
+a{color:var(--coral);text-decoration:none;transition:color .2s}
+a:hover{color:#ff9070}
+code{font-family:var(--mono);font-size:.85em;background:var(--surface2);padding:.15em .4em;border-radius:4px;color:var(--green)}
+.container{max-width:1100px;margin:0 auto;padding:0 1.5rem}
+section{padding:6rem 0;position:relative}
 
 /* ── Nav ── */
-nav{position:sticky;top:0;z-index:50;background:rgba(250,249,245,.92);border-bottom:1px solid var(--rule);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-nav .nav-inner{max-width:1080px;margin:0 auto;padding:.8rem 2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
-nav .logo{font-family:var(--serif);font-size:1.1rem;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:.5rem}
-nav .nav-links{display:flex;gap:1.4rem;font-size:.88rem}
-nav .nav-links a{color:var(--muted);font-weight:500;position:relative}
-nav .nav-links a::after{content:"";position:absolute;left:0;bottom:-2px;width:0;height:1.5px;background:var(--coral);transition:width .25s ease}
-nav .nav-links a:hover{color:var(--ink)}
-nav .nav-links a:hover::after{width:100%}
-nav .nav-cta{font-size:.84rem;padding:.45rem .9rem;border-radius:6px;background:var(--ink);color:var(--bg);font-weight:500;display:inline-flex;align-items:center;gap:.35rem;transition:background .15s}
-nav .nav-cta:hover{background:var(--coral-deep);color:#fff}
-@media(max-width:720px){nav .nav-links{display:none}}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,15,.85);border-bottom:1px solid var(--border);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.nav-inner{max-width:1100px;margin:0 auto;padding:.7rem 1.5rem;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--text);letter-spacing:-.02em}
+.logo span{color:var(--coral)}
+.nav-links{display:flex;gap:1.5rem;font-size:.85rem}
+.nav-links a{color:var(--text-dim);font-weight:500}
+.nav-links a:hover{color:var(--text)}
+.nav-cta{font-size:.82rem;padding:.4rem .9rem;border-radius:6px;background:var(--coral);color:#fff;font-weight:600;transition:all .2s}
+.nav-cta:hover{background:#ff8a6a;color:#fff;transform:translateY(-1px)}
+@media(max-width:680px){.nav-links{display:none}}
 
 /* ── Hero ── */
-.hero{padding:6rem 0 5rem;border-bottom:1px solid var(--rule)}
-.hero-inner{max-width:680px}
-.hero-badge{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:4px;background:var(--coral-wash);color:var(--coral-deep);font-size:.78rem;font-weight:500;margin-bottom:1.8rem;border:1px solid var(--coral-soft)}
-.hero h1{font-size:clamp(2.4rem,5vw,3.6rem);line-height:1.06;margin-bottom:1.5rem;letter-spacing:-.025em;font-weight:500}
-.hero h1 em{font-style:italic;color:var(--coral);font-weight:400}
-.hero h1 .hl{background:linear-gradient(180deg,transparent 62%,var(--coral-soft) 62%,var(--coral-soft) 92%,transparent 92%);padding:0 .06em}
-.hero .lede{font-size:1.12rem;color:var(--ink-soft);line-height:1.6;max-width:560px;margin-bottom:2rem}
-.hero-cta{display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1.8rem}
-.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.7rem 1.2rem;border-radius:6px;font-size:.92rem;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid transparent;text-decoration:none}
-.btn-primary{background:var(--ink);color:var(--bg)}
-.btn-primary:hover{background:var(--coral-deep);color:#fff;transform:translateY(-1px);box-shadow:0 6px 20px -6px rgba(160,82,52,.35)}
-.btn-ghost{background:transparent;color:var(--ink);border-color:var(--rule)}
-.btn-ghost:hover{border-color:var(--muted-soft);transform:translateY(-1px)}
-.btn svg{width:14px;height:14px}
-.hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.84rem;color:var(--muted)}
-.hero-meta span{display:inline-flex;align-items:center;gap:.3rem}
+.hero{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;padding-top:4rem}
+.hero canvas{position:absolute;inset:0;z-index:0}
+.hero-content{position:relative;z-index:2;text-align:center;max-width:700px;padding:2rem}
+.hero-badge{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:20px;background:var(--coral-glow);color:var(--coral);font-size:.78rem;font-weight:600;border:1px solid rgba(255,107,74,.2);margin-bottom:1.5rem;font-family:var(--mono)}
+.hero h1{font-family:var(--display);font-size:clamp(2.8rem,6vw,4.5rem);font-weight:400;line-height:1.05;margin-bottom:1.2rem;letter-spacing:-.03em}
+.hero h1 em{font-style:italic;color:var(--coral);text-shadow:0 0 40px var(--coral-glow)}
+.hero .lede{font-size:1.05rem;color:var(--text-dim);line-height:1.65;max-width:520px;margin:0 auto 2rem}
+.hero-cta{display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap;margin-bottom:2rem}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.65rem 1.3rem;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid transparent;font-family:var(--sans)}
+.btn-primary{background:var(--coral);color:#fff;border-color:var(--coral)}
+.btn-primary:hover{background:#ff8a6a;color:#fff;transform:translateY(-2px);box-shadow:0 8px 30px -8px rgba(255,107,74,.4)}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border-bright)}
+.btn-ghost:hover{border-color:var(--text-dim);transform:translateY(-2px)}
 
 /* ── Stats ── */
-.stats{background:var(--bg-alt);border-bottom:1px solid var(--rule);padding:3rem 0}
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
-@media(max-width:760px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
-.stat{background:var(--paper);padding:1.8rem 1.2rem;text-align:center}
-.stat .num{font-family:var(--serif);font-size:3.2rem;line-height:1;font-weight:500;color:var(--ink);letter-spacing:-.03em}
-.stat .label{margin-top:.4rem;color:var(--muted);font-size:.84rem;font-weight:500}
+.stats{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface);padding:2.5rem 0}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)}
+.stat{background:var(--surface);padding:1.5rem 1rem;text-align:center}
+.stat .num{font-family:var(--mono);font-size:2.6rem;font-weight:700;color:var(--text);line-height:1}
+.stat .num .accent{color:var(--coral)}
+.stat .label{margin-top:.4rem;color:var(--text-dim);font-size:.8rem;font-weight:500;letter-spacing:.05em;text-transform:uppercase}
+@media(max-width:640px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
 
-/* ── Dual Protocol ── */
-.proto-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-top:1.5rem}
-@media(max-width:860px){.proto-grid{grid-template-columns:1fr}}
-.proto-card{background:var(--paper);border:1px solid var(--rule);border-radius:10px;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
-.proto-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px -8px rgba(26,22,18,.08)}
-.proto-head{padding:.9rem 1.1rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--rule)}
-.proto-head .proto-brand{display:flex;align-items:center;gap:.5rem}
-.proto-head .logo-chip{width:24px;height:24px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:.72rem;font-weight:600;color:#fff}
-.proto-head .logo-chip.openai{background:#10A37F}
-.proto-head .logo-chip.anthropic{background:var(--coral)}
-.proto-head h4{font-family:var(--sans);font-size:.92rem;font-weight:600}
-.proto-head .proto-meta{font-size:.74rem;color:var(--muted);font-family:var(--mono)}
-.proto-body{background:#1E1B17;padding:1rem 1.2rem;font-family:var(--mono);font-size:.76rem;line-height:1.7;color:#E8E2D4;overflow-x:auto;white-space:pre}
-.proto-body .c-str{color:#B8C99A}
-.proto-body .c-key{color:var(--sand)}
-.proto-body .c-cmd{color:#E8E2D4;font-weight:500}
-.proto-body .c-flag{color:#D4A574}
-.proto-body .c-prompt{color:var(--coral);font-weight:600}
-.proto-body .c-com{color:#706A5C;font-style:italic}
-.note{background:var(--coral-wash);border-left:3px solid var(--coral);padding:.9rem 1.1rem;border-radius:0 6px 6px 0;margin-top:1.5rem;font-size:.88rem;color:var(--ink-soft);line-height:1.6}
-.note strong{color:var(--coral-deep)}
+/* ── Protocol Conversion ── */
+.proto-section{background:var(--bg)}
+.proto-vis{display:grid;grid-template-columns:1fr auto 1fr;gap:0;margin-top:2.5rem;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
+.proto-panel{padding:1.2rem;min-height:280px;position:relative;overflow:hidden}
+.proto-panel.left{border-right:1px solid var(--border)}
+.proto-panel.right{border-left:1px solid var(--border)}
+.proto-label{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.8rem;display:flex;align-items:center;gap:.4rem}
+.proto-label .dot{width:6px;height:6px;border-radius:50%;animation:pulse-dot 2s infinite}
+.proto-label .dot.teal{background:var(--teal);box-shadow:0 0 8px var(--teal-glow)}
+.proto-label .dot.coral{background:var(--coral);box-shadow:0 0 8px var(--coral-glow)}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+.proto-code{font-family:var(--mono);font-size:.72rem;line-height:1.65;color:var(--text-dim);white-space:pre;overflow-x:auto}
+.proto-code .k{color:var(--teal)} .proto-code .s{color:var(--green)} .proto-code .n{color:var(--amber)} .proto-code .c{color:var(--text-muted);font-style:italic}
+.proto-code .h{color:var(--coral)} .proto-code .b{color:var(--purple)}
+.proto-bridge{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1rem;min-width:100px;position:relative}
+.bridge-icon{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--coral),var(--teal));display:flex;align-items:center;justify-content:center;font-size:1.2rem;animation:bridge-pulse 3s infinite;box-shadow:0 0 30px rgba(255,107,74,.2)}
+@keyframes bridge-pulse{0%,100%{box-shadow:0 0 20px rgba(255,107,74,.2)}50%{box-shadow:0 0 40px rgba(78,205,196,.3)}}
+.bridge-text{font-family:var(--mono);font-size:.65rem;color:var(--text-muted);margin-top:.6rem;text-align:center}
+.bridge-arrow{width:2px;height:20px;background:linear-gradient(var(--teal),var(--coral));margin:.4rem 0;border-radius:1px;position:relative;overflow:hidden}
+.bridge-arrow::after{content:'';position:absolute;top:-100%;left:0;right:0;height:50%;background:rgba(255,255,255,.6);animation:flow 1.5s linear infinite}
+@keyframes flow{to{top:200%}}
+@media(max-width:860px){.proto-vis{grid-template-columns:1fr}.proto-panel.left,.proto-panel.right{border:none;border-bottom:1px solid var(--border)}.proto-bridge{flex-direction:row;padding:.6rem;min-width:auto}.bridge-arrow{width:20px;height:2px;background:linear-gradient(90deg,var(--teal),var(--coral))}}
+
+/* ── Kicker ── */
+.kicker{font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--coral);margin-bottom:.8rem}
+.section-title{font-family:var(--display);font-size:2.2rem;line-height:1.15;margin-bottom:.8rem;font-weight:400;letter-spacing:-.02em}
+.section-title em{font-style:italic;color:var(--teal)}
+.section-sub{color:var(--text-dim);font-size:.95rem;max-width:500px;margin-bottom:2rem}
+
+/* ── Arch ── */
+.arch-section{background:var(--surface)}
+.arch-flow{display:flex;align-items:center;justify-content:center;gap:0;margin-top:2rem;flex-wrap:wrap}
+.arch-node{background:var(--surface2);border:1px solid var(--border-bright);border-radius:10px;padding:.8rem 1.1rem;text-align:center;min-width:120px;position:relative;transition:all .3s}
+.arch-node:hover{border-color:var(--coral);box-shadow:0 0 20px var(--coral-glow);transform:translateY(-2px)}
+.arch-node .node-icon{font-size:1.3rem;margin-bottom:.3rem}
+.arch-node .node-name{font-family:var(--mono);font-size:.75rem;font-weight:600;color:var(--text)}
+.arch-node .node-sub{font-size:.65rem;color:var(--text-muted);margin-top:.15rem}
+.arch-arrow{width:40px;height:2px;background:var(--border-bright);position:relative;flex-shrink:0}
+.arch-arrow::after{content:'';position:absolute;left:0;top:-1px;width:12px;height:4px;background:var(--teal);border-radius:2px;animation:arrow-flow 2s linear infinite}
+@keyframes arrow-flow{0%{left:0;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:calc(100% - 12px);opacity:0}}
+.arch-sub-row{display:flex;justify-content:center;gap:1.5rem;margin-top:1.5rem;flex-wrap:wrap}
+.arch-sub{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;font-family:var(--mono);font-size:.72rem;color:var(--text-dim);display:flex;align-items:center;gap:.4rem}
+.arch-sub .sub-dot{width:5px;height:5px;border-radius:50%}
 
 /* ── Models ── */
-.models-section{background:var(--bg-alt)}
-.model-filters{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem}
-.filter-btn{padding:.35rem .85rem;border-radius:4px;background:var(--paper);border:1px solid var(--rule);font-size:.82rem;color:var(--muted);cursor:pointer;transition:all .15s;font-family:inherit;font-weight:500;display:inline-flex;align-items:center;gap:.3rem}
-.filter-btn:hover{color:var(--ink);border-color:var(--muted-soft)}
-.filter-btn.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.filter-btn .count{opacity:.6;font-size:.76rem}
-.filter-btn.active .count{opacity:.85}
-.model-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:.4rem}
-.model-card{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:.65rem .8rem;position:relative;overflow:hidden;cursor:default;transition:border-color .2s ease,transform .2s ease,box-shadow .2s ease}
-.model-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--provider-color,var(--muted-soft));transition:width .2s ease}
-.model-card:hover{border-color:var(--muted-soft);transform:translateY(-1px);box-shadow:0 4px 12px -4px rgba(26,22,18,.06)}
-.model-card:hover::before{width:4px}
-.model-card.hide{display:none}
-.model-name{font-family:var(--mono);font-size:.8rem;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;margin-bottom:.15rem}
-.model-meta{display:flex;align-items:center;gap:.35rem;font-size:.68rem;color:var(--muted);font-family:var(--sans)}
-.model-provider{font-weight:600;color:var(--provider-color,var(--muted))}
-.model-cost{margin-left:auto}
-.model-badge{display:inline-block;padding:.08rem .35rem;border-radius:3px;font-size:.6rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
-.model-badge.free{background:#EBF4E6;color:#3D7A3D}
-.model-badge.thinking{background:var(--coral-wash);color:var(--coral-deep)}
-.model-card[data-provider="anthropic"]{--provider-color:#CC785C}
-.model-card[data-provider="openai"]{--provider-color:#10A37F}
-.model-card[data-provider="google"]{--provider-color:#4285F4}
-.model-card[data-provider="deepseek"]{--provider-color:#5E6AD2}
-.model-card[data-provider="xai"]{--provider-color:#1F1F1F}
-.model-card[data-provider="qwen"]{--provider-color:#A855F7}
-.model-card[data-provider="moonshot"]{--provider-color:#000}
-.model-card[data-provider="zhipu"]{--provider-color:#3B82F6}
-.model-card[data-provider="windsurf"]{--provider-color:#6B6556}
+.models-section{background:var(--bg)}
+.provider-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.8rem;margin-top:1.5rem}
+.provider-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.1rem;position:relative;overflow:hidden;transition:all .3s;cursor:default}
+.provider-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--p-color);transition:width .3s}
+.provider-card:hover{transform:translateY(-3px);border-color:var(--p-color);box-shadow:0 8px 30px -10px var(--p-glow)}
+.provider-card:hover::before{width:5px}
+.provider-card .p-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+.provider-card .p-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;color:#fff;background:var(--p-color)}
+.provider-card .p-name{font-family:var(--mono);font-size:.85rem;font-weight:600;color:var(--text)}
+.provider-card .p-count{font-size:.7rem;color:var(--text-muted);margin-left:auto;font-family:var(--mono)}
+.provider-card .p-models{font-size:.72rem;color:var(--text-dim);line-height:1.6;font-family:var(--mono)}
 
-/* ── Architecture (dark immersive) ── */
-.arch-section{background:#151210;color:#E8E2D4;padding:5rem 0 4rem;position:relative;overflow:hidden}
-.arch-section::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(204,120,92,.08),transparent 65%),radial-gradient(ellipse at 20% 80%,rgba(139,111,176,.04),transparent 50%);pointer-events:none}
-.arch-section .kicker{color:#CC785C;opacity:.9}
-.arch-section .section-title{color:#E8E2D4}
-.arch-section .section-title em{color:#CC785C}
-.arch-section .section-sub{color:#8C8578}
-.arch-canvas{position:relative;margin-top:2rem;min-height:520px}
-@media(max-width:860px){.arch-canvas{min-height:auto}}
-.arch-row{display:flex;align-items:center;justify-content:center;gap:0;position:relative;padding:0 1rem}
-@media(max-width:860px){.arch-row{flex-direction:column;gap:2rem}}
-.arch-nd{position:relative;text-align:center;z-index:2;flex-shrink:0}
-.arch-nd-box{border:1px solid rgba(232,226,212,.12);border-radius:16px;padding:1.4rem 1.6rem;background:rgba(30,27,23,.8);backdrop-filter:blur(8px);transition:border-color .3s,box-shadow .3s}
-.arch-nd:hover .arch-nd-box{border-color:rgba(204,120,92,.3);box-shadow:0 0 30px -10px rgba(204,120,92,.15)}
-.arch-nd-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto .7rem;font-size:1.2rem;border:1px solid rgba(232,226,212,.1)}
-.arch-nd-label{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:#8C8578;margin-bottom:.3rem}
-.arch-nd-title{font-family:var(--serif);font-size:1.05rem;font-weight:500;color:#E8E2D4;margin-bottom:.2rem}
-.arch-nd-sub{font-size:.75rem;color:#6B6556;line-height:1.5}
-.arch-nd.hero-node .arch-nd-box{border-color:rgba(204,120,92,.35);background:rgba(204,120,92,.06);padding:1.8rem 2rem}
-.arch-nd.hero-node .arch-nd-icon{width:56px;height:56px;border-radius:14px;background:rgba(204,120,92,.12);border-color:rgba(204,120,92,.3);font-size:1.5rem}
-.arch-nd.hero-node .arch-nd-title{font-size:1.3rem;color:#fff}
-.arch-hero-glow{position:absolute;width:280px;height:280px;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(204,120,92,.12) 0%,transparent 70%);animation:a-pulse 4s ease-in-out infinite;pointer-events:none;z-index:0}
-@keyframes a-pulse{0%,100%{transform:translate(-50%,-50%) scale(.9);opacity:.6}50%{transform:translate(-50%,-50%) scale(1.15);opacity:1}}
-.arch-conn{flex:1;min-width:40px;height:40px;position:relative;display:flex;align-items:center;z-index:1}
-@media(max-width:860px){.arch-conn{min-width:0;width:2px;min-height:40px;height:40px;flex:0;flex-direction:column;justify-content:center}}
-.arch-conn-line{position:absolute;top:50%;left:0;right:0;height:2px;background:linear-gradient(90deg,rgba(204,120,92,.08),rgba(204,120,92,.25),rgba(204,120,92,.08))}
-@media(max-width:860px){.arch-conn-line{top:0;bottom:0;left:50%;width:2px;height:100%;background:linear-gradient(180deg,rgba(204,120,92,.08),rgba(204,120,92,.25),rgba(204,120,92,.08))}}
-.arch-conn-dot{position:absolute;width:6px;height:6px;border-radius:50%;background:#CC785C;box-shadow:0 0 8px 2px rgba(204,120,92,.4);animation:a-flow 2.5s ease-in-out infinite}
-@media(max-width:860px){.arch-conn-dot{animation-name:a-flow-v}}
-.arch-conn:nth-of-type(2) .arch-conn-dot:not(.ret){animation-delay:.6s}
-.arch-conn:nth-of-type(3) .arch-conn-dot:not(.ret){animation-delay:1.2s}
-.arch-conn:nth-of-type(1) .arch-conn-dot.ret{animation-delay:1.5s}
-.arch-conn:nth-of-type(2) .arch-conn-dot.ret{animation-delay:.9s}
-.arch-conn:nth-of-type(3) .arch-conn-dot.ret{animation-delay:.3s}
-@keyframes a-flow{0%{left:0;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:calc(100% - 6px);opacity:0}}
-@keyframes a-flow-v{0%{top:0;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:calc(100% - 6px);opacity:0}}
-.arch-conn-proto{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:.65rem;color:#6B6556;letter-spacing:.06em;white-space:nowrap;background:rgba(21,18,16,.8);padding:.1rem .5rem;border-radius:3px}
-@media(max-width:860px){.arch-conn-proto{bottom:auto;top:50%;left:calc(50% + 14px);transform:translateY(-50%) translateX(0)}}
-.arch-conn-dot.ret{background:#8B6FB0;box-shadow:0 0 8px 2px rgba(139,111,176,.4);animation:a-flow-ret 3s ease-in-out infinite}
-@keyframes a-flow-ret{0%{left:calc(100% - 6px);opacity:0}10%{opacity:1}90%{opacity:1}100%{left:0;opacity:0}}
-.arch-features{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:2.5rem;max-width:680px;margin-left:auto;margin-right:auto}
-@media(max-width:600px){.arch-features{grid-template-columns:repeat(2,1fr)}}
-.arch-ft{display:flex;align-items:center;gap:.5rem;padding:.6rem .8rem;border-radius:10px;border:1px solid rgba(232,226,212,.07);background:rgba(30,27,23,.5);transition:all .25s;cursor:default}
-.arch-ft:hover{border-color:rgba(204,120,92,.25);background:rgba(204,120,92,.05);transform:translateY(-1px)}
-.arch-ft-dot{width:6px;height:6px;border-radius:50%;background:#CC785C;flex-shrink:0;box-shadow:0 0 6px rgba(204,120,92,.4)}
-.arch-ft-text{font-size:.78rem;color:#A09888;font-family:var(--sans)}
-.arch-ft:hover .arch-ft-text{color:#E8E2D4}
-.arch-ft-desc{font-size:.65rem;color:#6B6556;margin-top:.1rem}
-.arch-flow-label{text-align:center;margin-top:2rem;font-size:.72rem;color:#6B6556;font-family:var(--mono);letter-spacing:.08em;display:flex;align-items:center;justify-content:center;gap:.8rem}
-.arch-flow-label .arr{display:inline-flex;align-items:center;gap:.3rem}
-.arch-flow-label .arr::before{content:"";width:24px;height:1px}
-.arch-flow-label .arr.req::before{background:linear-gradient(90deg,transparent,#CC785C)}
-.arch-flow-label .arr.res::before{background:linear-gradient(90deg,transparent,#8B6FB0)}
-
-/* ── Dashboard ── */
-.dashboard-section{background:var(--bg-alt)}
-.panel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.7rem;margin-top:1.5rem}
-.panel-card{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:1rem 1.1rem;transition:all .2s ease}
-.panel-card:hover{border-color:var(--coral-soft);transform:translateY(-2px);box-shadow:0 6px 16px -6px rgba(26,22,18,.07)}
-.panel-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
-.panel-icon{width:24px;height:24px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:var(--coral-wash);color:var(--coral-deep);font-family:var(--serif);font-size:.78rem;font-weight:600;flex-shrink:0}
-.panel-head h4{font-family:var(--sans);font-size:.9rem;font-weight:600}
-.panel-card p{font-size:.8rem;color:var(--muted);line-height:1.5}
-
-/* ── Deploy ── */
-.deploy-tabs{display:flex;gap:.3rem;margin-bottom:1.5rem;border-bottom:1px solid var(--rule);padding-bottom:-1px}
-.deploy-tab{padding:.5rem 1rem;font-size:.88rem;font-weight:500;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--sans)}
-.deploy-tab:hover{color:var(--ink)}
-.deploy-tab.active{color:var(--coral);border-bottom-color:var(--coral)}
-.deploy-content{display:none}
-.deploy-content.active{display:block}
-.deploy-steps{display:flex;flex-direction:column;gap:1.2rem;counter-reset:step}
-.step{display:flex;gap:1rem;align-items:flex-start;counter-increment:step}
-.step-num{width:32px;height:32px;border-radius:50%;background:var(--coral-wash);border:1.5px solid var(--coral-soft);color:var(--coral-deep);display:inline-flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:.9rem;font-weight:500;flex-shrink:0}
-.step-num::before{content:counter(step)}
-.step-body{flex:1;min-width:0}
-.step-body h3{font-size:1.1rem;margin-bottom:.3rem;font-weight:500}
-.step-body>p{color:var(--muted);margin-bottom:.6rem;font-size:.9rem}
-.code-box{background:#1E1B17;border-radius:8px;font-family:var(--mono);font-size:.78rem;color:#E8E2D4;overflow:hidden;border:1px solid #2A2520}
-.code-box-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;background:#242019;border-bottom:1px solid #2E2922;font-size:.7rem;color:#8C8578}
-.copy-btn{background:transparent;border:1px solid #3A352D;color:#A09888;cursor:pointer;padding:.15rem .5rem;border-radius:3px;font-family:var(--sans);font-size:.7rem;transition:all .15s}
-.copy-btn:hover{color:#E8E2D4;border-color:#5A5448}
-.copy-btn.ok{color:var(--coral);border-color:var(--coral)}
-.code-box pre{padding:.9rem 1rem;overflow-x:auto;line-height:1.65}
-.code-box .c-str{color:#B8C99A}
-.code-box .c-flag{color:#D4A574}
-.code-box .c-cmd{color:#E8E2D4;font-weight:500}
-.code-box .c-com{color:#706A5C;font-style:italic}
-.code-box .c-prompt{color:var(--coral);user-select:none}
-.code-box .c-key{color:var(--sand)}
+/* ── Quick Start ── */
+.qs-section{background:var(--surface)}
+.terminal{background:#0d0d12;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:1.5rem}
+.terminal-bar{background:var(--surface2);padding:.5rem .8rem;display:flex;align-items:center;gap:.4rem;border-bottom:1px solid var(--border)}
+.terminal-dot{width:8px;height:8px;border-radius:50%}
+.terminal-title{font-family:var(--mono);font-size:.7rem;color:var(--text-muted);margin-left:.5rem}
+.terminal pre{padding:1.2rem;font-family:var(--mono);font-size:.78rem;line-height:1.7;color:var(--text-dim);overflow-x:auto;white-space:pre}
+.terminal pre .prompt{color:var(--coral);font-weight:700}
+.terminal pre .cmd{color:var(--text)}
+.terminal pre .flag{color:var(--amber)}
+.terminal pre .cmt{color:var(--text-muted);font-style:italic}
+.copy-btn{position:absolute;top:.5rem;right:.5rem;font-family:var(--mono);font-size:.68rem;padding:.3rem .6rem;border-radius:4px;background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);cursor:pointer;transition:all .2s}
+.copy-btn:hover{border-color:var(--text-dim);color:var(--text)}
+.copy-btn.ok{color:var(--green);border-color:var(--green)}
 
 /* ── Usage ── */
-.usage-section{background:var(--bg-alt)}
-.usage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-top:1.5rem}
-.usage-card{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:1.2rem 1.1rem;transition:all .2s ease}
-.usage-card:hover{border-color:var(--coral-soft);transform:translateY(-2px);box-shadow:0 6px 16px -6px rgba(26,22,18,.07)}
-.usage-card h4{font-family:var(--sans);font-size:.95rem;font-weight:600;margin-bottom:.2rem;display:flex;align-items:center;gap:.4rem}
-.usage-card .logo-chip{width:22px;height:22px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:.65rem;font-weight:600;color:#fff;flex-shrink:0}
-.usage-card .endpoint-tag{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-bottom:.7rem}
-.usage-card .endpoint-tag strong{color:var(--coral)}
-.usage-card pre{background:#1E1B17;padding:.7rem .9rem;border-radius:6px;font-family:var(--mono);font-size:.74rem;line-height:1.6;color:#E8E2D4;overflow-x:auto}
-.usage-card pre .c-str{color:#B8C99A}
-.usage-card pre .c-key{color:var(--sand)}
-.usage-card pre .c-com{color:#706A5C;font-style:italic}
-
-/* ── FAQ ── */
-.faq-list{display:flex;flex-direction:column;gap:.5rem;margin-top:1.5rem}
-.faq-item{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:.9rem 1.1rem;transition:border-color .15s}
-.faq-item[open]{border-color:var(--coral-soft)}
-.faq-item summary{cursor:pointer;list-style:none;font-weight:500;font-size:.95rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
-.faq-item summary::-webkit-details-marker{display:none}
-.faq-item summary::after{content:"+";font-family:var(--serif);font-size:1.3rem;color:var(--muted);line-height:1}
-.faq-item[open] summary::after{content:"\2212";color:var(--coral)}
-.faq-item .a{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--rule);color:var(--muted);font-size:.9rem;line-height:1.65}
-.faq-item .a code{font-size:.84em}
+.usage-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.8rem;margin-top:1.5rem}
+.usage-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem;transition:all .3s}
+.usage-card:hover{border-color:var(--border-bright);transform:translateY(-2px)}
+.usage-card h4{font-family:var(--mono);font-size:.85rem;font-weight:600;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
+.usage-card h4 .chip{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:#fff}
+.usage-card pre{font-family:var(--mono);font-size:.72rem;line-height:1.6;color:var(--text-dim);white-space:pre-wrap;background:var(--bg);padding:.6rem;border-radius:6px;border:1px solid var(--border)}
 
 /* ── Footer ── */
-footer{border-top:1px solid var(--rule);padding:3rem 0 2.5rem;margin-top:2rem}
-.footer-inner{display:grid;grid-template-columns:2fr 1fr 1fr;gap:2rem}
-@media(max-width:720px){.footer-inner{grid-template-columns:1fr}}
-.footer-brand .logo{font-family:var(--serif);font-size:1.15rem;font-weight:500;margin-bottom:.6rem;color:var(--ink)}
-.footer-brand p{color:var(--muted);font-size:.85rem;max-width:320px}
-.footer-col h5{font-size:.78rem;font-weight:600;color:var(--ink);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.08em}
-.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:.35rem}
-.footer-col a{color:var(--muted);font-size:.85rem}
-.footer-col a:hover{color:var(--ink)}
-.footer-bottom{margin-top:2rem;padding-top:1.2rem;border-top:1px solid var(--rule);display:flex;justify-content:space-between;flex-wrap:wrap;gap:.8rem;font-size:.78rem;color:var(--muted-soft)}
+footer{border-top:1px solid var(--border);padding:2.5rem 0;background:var(--surface)}
+.footer-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem}
+.footer-brand{font-family:var(--mono);font-size:.85rem;color:var(--text-dim)}
+.footer-brand a{color:var(--coral)}
+.footer-links{display:flex;gap:1.2rem;font-size:.82rem}
+.footer-links a{color:var(--text-dim)}
+.footer-links a:hover{color:var(--text)}
 
-/* ── Reveal ── */
-.reveal{opacity:0;transform:translateY(20px);transition:opacity .7s cubic-bezier(.23,1,.32,1),transform .7s cubic-bezier(.23,1,.32,1)}
-.reveal.in{opacity:1;transform:none}
-.reveal:nth-child(2){transition-delay:.08s}
-.reveal:nth-child(3){transition-delay:.16s}
-.reveal:nth-child(4){transition-delay:.24s}
-@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}}
+/* ── Scroll reveal ── */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:translateY(0)}
 </style>
 </head>
 <body>
 
-<!-- ── Nav ── -->
 <nav>
   <div class="nav-inner">
-    <a href="#" class="logo">Windsurf API</a>
+    <div class="logo">Windsurf<span>API</span></div>
     <div class="nav-links">
-      <a href="#protocols">雙協定</a>
+      <a href="#protocol">协议</a>
+      <a href="#arch">架构</a>
       <a href="#models">模型</a>
-      <a href="#architecture">架構</a>
-      <a href="#deploy">部署</a>
-      <a href="#dashboard">管理</a>
-      <a href="#faq">FAQ</a>
+      <a href="#start">部署</a>
     </div>
-    <a href="https://github.com/dwgx/WindsurfAPI" class="nav-cta" target="_blank" rel="noopener">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-      GitHub
-    </a>
+    <a class="nav-cta" href="https://github.com/dwgx/WindsurfAPI" target="_blank">GitHub ★</a>
   </div>
 </nav>
 
 <!-- ── Hero ── -->
-<section class="hero">
-  <div class="container">
-    <div class="hero-inner reveal">
-      <div class="hero-badge">v1.5.0 — Docker + SOCKS5 + 工具調用修復</div>
-      <h1>
-        把 <em>Windsurf</em> 的 AI 模型<br>
-        變成你熟悉的 <span class="hl">API</span>。
-      </h1>
-      <p class="lede">
-        同時支援 <code>/v1/chat/completions</code> 與 <code>/v1/messages</code> 雙協定。Claude Code、Cursor、Cline 直接連。零 npm 依賴，Docker 一鍵部署。
-      </p>
-      <div class="hero-cta">
-        <a href="#deploy" class="btn btn-primary">
-          開始部署
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h8M8 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </a>
-        <a href="https://github.com/dwgx/WindsurfAPI" class="btn btn-ghost" target="_blank" rel="noopener">
-          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.64 7.64 0 014 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-          查看原始碼
-        </a>
-      </div>
-      <div class="hero-meta">
-        <span>零 npm 依賴</span>
-        <span>Node.js &ge; 20</span>
-        <span>MIT License</span>
-        <span>Docker 就緒</span>
-      </div>
+<section class="hero" id="top">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-content">
+    <div class="hero-badge">v2.0.0 · 零 npm 依赖</div>
+    <h1>把 Windsurf 变成<br><em>双协议 API 网关</em></h1>
+    <p class="lede">107+ AI 模型 — Claude · GPT-5 · Gemini 3 · DeepSeek · Grok — 通过 OpenAI 和 Anthropic 双协议同时暴露。Claude Code、Cursor、Cline 直连。</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#start">快速开始</a>
+      <a class="btn btn-ghost" href="https://github.com/dwgx/WindsurfAPI" target="_blank">查看源码</a>
     </div>
   </div>
 </section>
 
 <!-- ── Stats ── -->
-<section class="stats" style="padding:2.5rem 0">
+<div class="stats">
   <div class="container">
     <div class="stats-grid">
-      <div class="stat reveal"><div class="num" id="stat-models">0</div><div class="label">AI 模型</div></div>
-      <div class="stat reveal"><div class="num">9</div><div class="label">供應商</div></div>
-      <div class="stat reveal"><div class="num">2</div><div class="label">相容協定</div></div>
-      <div class="stat reveal"><div class="num">0</div><div class="label">npm 依賴</div></div>
+      <div class="stat"><div class="num">107<span class="accent">+</span></div><div class="label">AI 模型</div></div>
+      <div class="stat"><div class="num">9</div><div class="label">模型提供商</div></div>
+      <div class="stat"><div class="num">0</div><div class="label">npm 依赖</div></div>
+      <div class="stat"><div class="num">2</div><div class="label">协议支持</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Protocol Conversion ── -->
+<section class="proto-section" id="protocol">
+  <div class="container">
+    <div class="reveal">
+      <div class="kicker">协议转换引擎</div>
+      <h2 class="section-title">看请求如何<em>穿越</em>协议层</h2>
+      <p class="section-sub">客户端发送标准 OpenAI/Anthropic 请求，WindsurfAPI 实时翻译为 Windsurf Cascade gRPC 协议，再将响应还原回标准格式。</p>
+    </div>
+
+    <div class="proto-vis reveal">
+      <div class="proto-panel left">
+        <div class="proto-label"><span class="dot teal"></span>入站请求 · OpenAI</div>
+        <div class="proto-code" id="proto-in"></div>
+      </div>
+      <div class="proto-bridge">
+        <div class="bridge-arrow"></div>
+        <div class="bridge-icon">⚡</div>
+        <div class="bridge-text">WindsurfAPI<br>协议转换</div>
+        <div class="bridge-arrow"></div>
+      </div>
+      <div class="proto-panel right">
+        <div class="proto-label"><span class="dot coral"></span>出站请求 · gRPC Cascade</div>
+        <div class="proto-code" id="proto-out"></div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ── Dual Protocol ── -->
-<section class="dual-protocol" id="protocols">
+<!-- ── Architecture ── -->
+<section class="arch-section" id="arch">
   <div class="container">
     <div class="reveal">
-      <div class="kicker">雙協定 · Dual Protocol</div>
-      <h2 class="section-title">同一個伺服器，<em>兩套標準</em>。</h2>
-      <p class="section-sub">不管你手上的客戶端走 OpenAI 還是 Anthropic 協定，指向同一個 Windsurf API 實例就能用。</p>
+      <div class="kicker">系统架构</div>
+      <h2 class="section-title">从请求到<em>响应</em>的完整链路</h2>
     </div>
-
-    <div class="proto-grid reveal">
-      <div class="proto-card">
-        <div class="proto-head">
-          <div class="proto-brand"><span class="logo-chip openai">S</span><h4>OpenAI 相容</h4></div>
-          <span class="proto-meta">POST /v1/chat/completions</span>
-        </div>
-<pre class="proto-body"><span class="c-prompt">$</span> <span class="c-cmd">curl</span> http://localhost:3003<span class="c-str">/v1/chat/completions</span> \
-  <span class="c-flag">-H</span> <span class="c-str">"Authorization: Bearer sk-ws-demo"</span> \
-  <span class="c-flag">-d</span> <span class="c-str">'{
-    <span class="c-key">"model"</span>: "gpt-5.2",
-    <span class="c-key">"messages"</span>: [
-      {"role":"user","content":"hello"}
-    ],
-    <span class="c-key">"stream"</span>: true
-  }'</span>
-<span class="c-com"># → Server-Sent Events (OpenAI chunk 格式)</span></pre>
-      </div>
-
-      <div class="proto-card">
-        <div class="proto-head">
-          <div class="proto-brand"><span class="logo-chip anthropic">A</span><h4>Anthropic 相容</h4></div>
-          <span class="proto-meta">POST /v1/messages</span>
-        </div>
-<pre class="proto-body"><span class="c-prompt">$</span> <span class="c-cmd">curl</span> http://localhost:3003<span class="c-str">/v1/messages</span> \
-  <span class="c-flag">-H</span> <span class="c-str">"x-api-key: sk-ws-demo"</span> \
-  <span class="c-flag">-d</span> <span class="c-str">'{
-    <span class="c-key">"model"</span>: "claude-opus-4.6",
-    <span class="c-key">"messages"</span>: [
-      {"role":"user","content":"hello"}
-    ],
-    <span class="c-key">"stream"</span>: true
-  }'</span>
-<span class="c-com"># → SSE (Anthropic message_delta 格式)</span></pre>
-      </div>
+    <div class="arch-flow reveal">
+      <div class="arch-node"><div class="node-icon">💻</div><div class="node-name">客户端</div><div class="node-sub">Claude Code / Cursor</div></div>
+      <div class="arch-arrow"></div>
+      <div class="arch-node"><div class="node-icon">🔄</div><div class="node-name">WindsurfAPI</div><div class="node-sub">协议转换 · 账号池</div></div>
+      <div class="arch-arrow"></div>
+      <div class="arch-node"><div class="node-icon">⚙️</div><div class="node-name">Language Server</div><div class="node-sub">gRPC · Protobuf</div></div>
+      <div class="arch-arrow"></div>
+      <div class="arch-node"><div class="node-icon">☁️</div><div class="node-name">Windsurf Cloud</div><div class="node-sub">107+ AI 模型</div></div>
     </div>
-
-    <div class="note reveal">
-      <strong>同一個請求體格式、同一個帳號池、同一個速率限制器</strong>——切換協定只是換路由前綴。Claude Code、Cline 吃 <code>/v1/messages</code>，Cursor/OpenAI SDK 吃 <code>/v1/chat/completions</code>，互不干擾。
+    <div class="arch-sub-row reveal">
+      <div class="arch-sub"><span class="sub-dot" style="background:var(--coral)"></span>账号池轮询 · RPM 均衡</div>
+      <div class="arch-sub"><span class="sub-dot" style="background:var(--teal)"></span>工具调用模拟 · 三格式</div>
+      <div class="arch-sub"><span class="sub-dot" style="background:var(--green)"></span>路径清洗 · 三层防护</div>
+      <div class="arch-sub"><span class="sub-dot" style="background:var(--purple)"></span>会话复用 · 指纹匹配</div>
     </div>
   </div>
 </section>
@@ -412,349 +256,70 @@ footer{border-top:1px solid var(--rule);padding:3rem 0 2.5rem;margin-top:2rem}
 <section class="models-section" id="models">
   <div class="container">
     <div class="reveal">
-      <div class="kicker">模型 · Models</div>
-      <h2 class="section-title">一個 API 背後，<em>多個供應商</em>。</h2>
-      <p class="section-sub">從 Claude Opus 到 GPT-5、從 Gemini 3 到 DeepSeek R1，9 個供應商的模型統一接入。</p>
+      <div class="kicker">模型矩阵</div>
+      <h2 class="section-title">9 家提供商 · <em>107+</em> 模型</h2>
+      <p class="section-sub">从 Claude Opus 到 GPT-5，从 Gemini 3 到 DeepSeek R1，一个端点全覆盖。</p>
     </div>
-
-    <div class="model-filters reveal" id="model-filters">
-      <button class="filter-btn active" data-filter="all">全部 <span class="count" id="count-all">0</span></button>
-      <button class="filter-btn" data-filter="anthropic">Claude <span class="count" id="count-anthropic">0</span></button>
-      <button class="filter-btn" data-filter="openai">GPT <span class="count" id="count-openai">0</span></button>
-      <button class="filter-btn" data-filter="google">Gemini <span class="count" id="count-google">0</span></button>
-      <button class="filter-btn" data-filter="deepseek">DeepSeek</button>
-      <button class="filter-btn" data-filter="xai">Grok</button>
-      <button class="filter-btn" data-filter="qwen">Qwen</button>
-      <button class="filter-btn" data-filter="moonshot">Kimi</button>
-      <button class="filter-btn" data-filter="zhipu">GLM</button>
-      <button class="filter-btn" data-filter="windsurf">SWE</button>
-      <button class="filter-btn" data-filter="thinking">思考型 <span class="count" id="count-thinking">0</span></button>
-      <button class="filter-btn" data-filter="free">免費 <span class="count" id="count-free">0</span></button>
-    </div>
-
-    <div class="model-grid reveal" id="model-grid"></div>
-
-    <div class="note reveal">
-      <strong>免費帳號：</strong>僅支援 <code>gpt-4o-mini</code> 與 <code>gemini-2.5-flash</code>。其餘模型需 Windsurf Pro 訂閱。<br>
-      <strong>看不到最新模型？</strong>你的 Language Server binary 可能落後 Windsurf 雲端，從桌面端拷貝最新版 LS 覆蓋即可——<code>/v1/models</code> 會自動從雲端發現新模型。
-    </div>
-  </div>
-</section>
-
-<!-- ── Architecture ── -->
-<section id="architecture" class="arch-section">
-  <div class="container">
-    <div class="reveal">
-      <div class="kicker">架構 · Architecture</div>
-      <h2 class="section-title">中間多一層，<em>全都接住</em>。</h2>
-      <p class="section-sub">請求從客戶端出發，經過協定翻譯、帳號池選號、工具仿真、路徑淨化，再由語言伺服器轉成 Protobuf 送到 Windsurf 雲端。回應原路返回，流式解析後交付。</p>
-    </div>
-
-    <div class="arch-canvas reveal">
-      <div class="arch-row">
-        <!-- Node 1: Client -->
-        <div class="arch-nd">
-          <div class="arch-nd-box">
-            <div class="arch-nd-icon" style="background:rgba(232,226,212,.06);color:#E8E2D4">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M7 21h10M12 17v4"/></svg>
-            </div>
-            <div class="arch-nd-label">Client</div>
-            <div class="arch-nd-title">IDE / CLI</div>
-            <div class="arch-nd-sub">Claude Code · Cursor<br>Cline · OpenAI SDK</div>
-          </div>
-        </div>
-
-        <!-- Connection 1 -->
-        <div class="arch-conn">
-          <div class="arch-conn-line"></div>
-          <div class="arch-conn-dot"></div>
-          <div class="arch-conn-dot ret"></div>
-          <div class="arch-conn-proto">HTTP · SSE</div>
-        </div>
-
-        <!-- Node 2: Windsurf API (HERO) -->
-        <div class="arch-nd hero-node">
-          <div class="arch-hero-glow"></div>
-          <div class="arch-nd-box">
-            <div class="arch-nd-icon" style="background:rgba(204,120,92,.15);color:#CC785C">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            </div>
-            <div class="arch-nd-label">Node.js Proxy</div>
-            <div class="arch-nd-title">Windsurf API</div>
-            <div class="arch-nd-sub">協定翻譯 · 帳號池輪詢<br>工具仿真 · 上下文複用<br>速率限制 · 故障轉移</div>
-          </div>
-        </div>
-
-        <!-- Connection 2 -->
-        <div class="arch-conn">
-          <div class="arch-conn-line"></div>
-          <div class="arch-conn-dot"></div>
-          <div class="arch-conn-dot ret"></div>
-          <div class="arch-conn-proto">Protobuf · gRPC</div>
-        </div>
-
-        <!-- Node 3: Language Server -->
-        <div class="arch-nd">
-          <div class="arch-nd-box">
-            <div class="arch-nd-icon" style="background:rgba(232,226,212,.06);color:#A09888">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M6 14h12"/></svg>
-            </div>
-            <div class="arch-nd-label">Binary · gRPC</div>
-            <div class="arch-nd-title">Language Server</div>
-            <div class="arch-nd-sub">Windsurf LS 二進位<br>Proto 序列化 / 反序列化</div>
-          </div>
-        </div>
-
-        <!-- Connection 3 -->
-        <div class="arch-conn">
-          <div class="arch-conn-line"></div>
-          <div class="arch-conn-dot"></div>
-          <div class="arch-conn-dot ret"></div>
-          <div class="arch-conn-proto">TLS · HTTPS</div>
-        </div>
-
-        <!-- Node 4: Cloud -->
-        <div class="arch-nd">
-          <div class="arch-nd-box">
-            <div class="arch-nd-icon" style="background:rgba(139,111,176,.08);color:#8B6FB0">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10a6 6 0 00-11.3-2A4.5 4.5 0 005 17h13a4 4 0 100-7z"/></svg>
-            </div>
-            <div class="arch-nd-label">Upstream</div>
-            <div class="arch-nd-title">Windsurf Cloud</div>
-            <div class="arch-nd-sub">Cascade AI 引擎<br>107+ 模型推理</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Feature modules fanning out from center -->
-      <div class="arch-features reveal">
-        <div class="arch-ft">
-          <span class="arch-ft-dot"></span>
-          <div><div class="arch-ft-text">雙協定翻譯</div><div class="arch-ft-desc">OpenAI ↔ Anthropic ↔ Cascade</div></div>
-        </div>
-        <div class="arch-ft">
-          <span class="arch-ft-dot"></span>
-          <div><div class="arch-ft-text">多帳號池</div><div class="arch-ft-desc">輪詢 · 故障轉移 · 自動封禁偵測</div></div>
-        </div>
-        <div class="arch-ft">
-          <span class="arch-ft-dot"></span>
-          <div><div class="arch-ft-text">工具仿真</div><div class="arch-ft-desc">Prompt 注入 · 三格式解析</div></div>
-        </div>
-        <div class="arch-ft">
-          <span class="arch-ft-dot"></span>
-          <div><div class="arch-ft-text">上下文複用</div><div class="arch-ft-desc">Fingerprint 池 · Cascade 會話快取</div></div>
-        </div>
-        <div class="arch-ft">
-          <span class="arch-ft-dot"></span>
-          <div><div class="arch-ft-text">安全淨化</div><div class="arch-ft-desc">路徑剝離 · SSRF 防護 · Proto 截斷檢測</div></div>
-        </div>
-        <div class="arch-ft">
-          <span class="arch-ft-dot"></span>
-          <div><div class="arch-ft-text">SOCKS5 · Docker</div><div class="arch-ft-desc">每帳號獨立代理 · 容器化部署</div></div>
-        </div>
-      </div>
-
-      <div class="arch-flow-label reveal">
-        <span class="arr req">請求流</span>
-        <span style="color:#4A433B">·</span>
-        <span class="arr res">回應流</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ── Dashboard ── -->
-<section class="dashboard-section" id="dashboard">
-  <div class="container">
-    <div class="reveal">
-      <div class="kicker">管理後台 · Dashboard</div>
-      <h2 class="section-title">10 個面板，<em>帳號運維</em>全搞定。</h2>
-      <p class="section-sub">訪問 <code>/dashboard</code>，暗色 Web 介面。日誌即時串流、帳號一鍵登入、模型黑白名單、封禁偵測。</p>
-    </div>
-
-    <div class="panel-grid reveal">
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">1</div><h4>總覽</h4></div><p>運行時間、帳號池狀態、分模型成功率</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">2</div><h4>登入取號</h4></div><p>Email/密碼直接註冊，自動取得 Token</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">3</div><h4>帳號管理</h4></div><p>新增、刪除、停用、餘額 Credits 查詢</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">4</div><h4>模型控制</h4></div><p>全域與帳號層的模型白/黑名單</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">5</div><h4>代理配置</h4></div><p>全域及個別帳號 HTTP/SOCKS5 代理</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">6</div><h4>日誌檢視</h4></div><p>即時 SSE 串流，級別篩選，關鍵字高亮</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">7</div><h4>請求統計</h4></div><p>按模型/帳號維度的指標與圖表</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">8</div><h4>封禁偵測</h4></div><p>錯誤模式偵測，帳號健康自動監控</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">9</div><h4>自動更新</h4></div><p>一鍵 git pull + PM2 重啟服務</p></div>
-      <div class="panel-card"><div class="panel-head"><div class="panel-icon">10</div><h4>致謝</h4></div><p>Contributors 列表</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ── Deploy ── -->
-<section class="deploy-section" id="deploy">
-  <div class="container">
-    <div class="reveal">
-      <div class="kicker">部署 · Deploy</div>
-      <h2 class="section-title">從零到跑起來，<em>五分鐘</em>。</h2>
-      <p class="section-sub">兩種方式任選。</p>
-    </div>
-
-    <div class="reveal">
-      <div class="deploy-tabs">
-        <button class="deploy-tab active" data-tab="manual">手動部署</button>
-        <button class="deploy-tab" data-tab="docker">Docker</button>
-      </div>
-
-      <div class="deploy-content active" id="tab-manual">
-        <div class="deploy-steps">
-          <div class="step"><div class="step-num"></div><div class="step-body">
-            <h3>安裝 Node.js 20+</h3>
-            <div class="code-box"><div class="code-box-head"><span class="lang">bash</span><button class="copy-btn" data-copy>複製</button></div>
-<pre><span class="c-prompt">$</span> <span class="c-cmd">curl</span> -fsSL https://deb.nodesource.com/setup_20.x | bash -
-<span class="c-prompt">$</span> <span class="c-cmd">apt install</span> -y nodejs</pre>
-            </div>
-          </div></div>
-
-          <div class="step"><div class="step-num"></div><div class="step-body">
-            <h3>Clone + 安裝 Language Server</h3>
-            <div class="code-box"><div class="code-box-head"><span class="lang">bash</span><button class="copy-btn" data-copy>複製</button></div>
-<pre><span class="c-prompt">$</span> <span class="c-cmd">git clone</span> https://github.com/dwgx/WindsurfAPI.git
-<span class="c-prompt">$</span> <span class="c-cmd">cd</span> WindsurfAPI
-<span class="c-prompt">$</span> <span class="c-cmd">bash</span> install-ls.sh</pre>
-            </div>
-          </div></div>
-
-          <div class="step"><div class="step-num"></div><div class="step-body">
-            <h3>設定 <code>.env</code></h3>
-            <div class="code-box"><div class="code-box-head"><span class="lang">.env</span><button class="copy-btn" data-copy>複製</button></div>
-<pre><span class="c-key">PORT</span>=<span class="c-str">3003</span>
-<span class="c-key">API_KEY</span>=                   <span class="c-com"># 留空 = 不驗證</span>
-<span class="c-key">DEFAULT_MODEL</span>=<span class="c-str">gpt-4o-mini</span>
-<span class="c-key">LS_BINARY_PATH</span>=<span class="c-str">/opt/windsurf/language_server_linux_x64</span>
-<span class="c-key">DASHBOARD_PASSWORD</span>=         <span class="c-com"># 留空 = 後台免密碼</span></pre>
-            </div>
-          </div></div>
-
-          <div class="step"><div class="step-num"></div><div class="step-body">
-            <h3>啟動</h3>
-            <div class="code-box"><div class="code-box-head"><span class="lang">bash</span><button class="copy-btn" data-copy>複製</button></div>
-<pre><span class="c-prompt">$</span> <span class="c-cmd">npm install</span> -g pm2
-<span class="c-prompt">$</span> <span class="c-cmd">pm2 start</span> src/index.js --name windsurf-api
-<span class="c-prompt">$</span> <span class="c-cmd">pm2 save</span> && <span class="c-cmd">pm2 startup</span></pre>
-            </div>
-            <div class="note"><strong>一鍵更新：</strong><code>bash update.sh</code></div>
-          </div></div>
-        </div>
-      </div>
-
-      <div class="deploy-content" id="tab-docker">
-        <div class="deploy-steps">
-          <div class="step"><div class="step-num"></div><div class="step-body">
-            <h3>準備配置</h3>
-            <div class="code-box"><div class="code-box-head"><span class="lang">bash</span><button class="copy-btn" data-copy>複製</button></div>
-<pre><span class="c-prompt">$</span> <span class="c-cmd">git clone</span> https://github.com/dwgx/WindsurfAPI.git
-<span class="c-prompt">$</span> <span class="c-cmd">cd</span> WindsurfAPI
-<span class="c-prompt">$</span> <span class="c-cmd">cp</span> .env.example .env</pre>
-            </div>
-          </div></div>
-
-          <div class="step"><div class="step-num"></div><div class="step-body">
-            <h3>啟動容器</h3>
-            <div class="code-box"><div class="code-box-head"><span class="lang">bash</span><button class="copy-btn" data-copy>複製</button></div>
-<pre><span class="c-prompt">$</span> <span class="c-cmd">docker compose</span> up -d --build
-<span class="c-prompt">$</span> <span class="c-cmd">docker compose</span> logs -f</pre>
-            </div>
-            <div class="note">
-              <strong>預設掛載：</strong><code>.docker-data/data</code> 持久化帳號/配置，<code>.docker-data/opt/windsurf</code> 放 LS binary。容器首次啟動會自動下載。
-            </div>
-          </div></div>
-        </div>
-      </div>
-    </div>
+    <div class="provider-grid reveal" id="provider-grid"></div>
   </div>
 </section>
 
 <!-- ── Usage ── -->
-<section class="usage-section">
+<section id="usage" style="background:var(--surface)">
   <div class="container">
     <div class="reveal">
-      <div class="kicker">客戶端接入 · Integrations</div>
-      <h2 class="section-title">你常用的那個 IDE，<em>已經兼容了</em>。</h2>
-      <p class="section-sub">改 BASE_URL，塞 API KEY，完事。</p>
+      <div class="kicker">接入方式</div>
+      <h2 class="section-title">所有 SDK <em>直连</em></h2>
     </div>
-
     <div class="usage-grid reveal">
       <div class="usage-card">
-        <h4><span class="logo-chip" style="background:#CC785C">C</span>Claude Code</h4>
-        <p class="endpoint-tag">→ <strong>/v1/messages</strong> · Anthropic 協定</p>
-<pre><span class="c-key">export</span> ANTHROPIC_BASE_URL=<span class="c-str">"http://YOUR_IP:3003"</span>
-<span class="c-key">export</span> ANTHROPIC_API_KEY=<span class="c-str">"sk-ws-your-key"</span>
-claude</pre>
+        <h4><span class="chip" style="background:#D97757">A</span> Claude Code</h4>
+<pre><span class="k">ANTHROPIC_BASE_URL</span>=<span class="s">http://IP:3003</span>
+<span class="k">ANTHROPIC_API_KEY</span>=<span class="s">sk-your-key</span>
+claude -p <span class="s">"你好"</span></pre>
       </div>
       <div class="usage-card">
-        <h4><span class="logo-chip" style="background:#3B82F6">C</span>Cursor</h4>
-        <p class="endpoint-tag">→ <strong>/v1/chat/completions</strong> · OpenAI 協定</p>
-<pre><span class="c-com"># Settings → Models → Custom OpenAI</span>
-Base URL: <span class="c-str">http://YOUR_IP:3003/v1</span>
-API Key:  <span class="c-str">sk-ws-your-key</span>
-Model:    <span class="c-str">claude-opus-4.6</span></pre>
-      </div>
-      <div class="usage-card">
-        <h4><span class="logo-chip" style="background:#8B6FB0">C</span>Cline / Roo Code</h4>
-        <p class="endpoint-tag">→ <strong>Anthropic</strong> 或 <strong>OpenAI</strong> provider 皆可</p>
-<pre><span class="c-com"># Provider: OpenAI Compatible</span>
-Base URL: <span class="c-str">http://YOUR_IP:3003/v1</span>
-API Key:  <span class="c-str">sk-ws-your-key</span></pre>
-      </div>
-      <div class="usage-card">
-        <h4><span class="logo-chip" style="background:#10A37F">O</span>OpenAI SDK</h4>
-        <p class="endpoint-tag">→ <strong>/v1/chat/completions</strong></p>
-<pre><span class="c-key">from</span> openai <span class="c-key">import</span> OpenAI
+        <h4><span class="chip" style="background:#10A37F">O</span> OpenAI SDK</h4>
+<pre><span class="k">from</span> openai <span class="k">import</span> OpenAI
 client = OpenAI(
-    base_url=<span class="c-str">"http://YOUR_IP:3003/v1"</span>,
-    api_key=<span class="c-str">"sk-ws-your-key"</span>,
+  base_url=<span class="s">"http://IP:3003/v1"</span>,
+  api_key=<span class="s">"sk-your-key"</span>
 )</pre>
+      </div>
+      <div class="usage-card">
+        <h4><span class="chip" style="background:#8B6FB0">C</span> Cursor / Cline</h4>
+<pre>Base URL: <span class="s">http://IP:3003/v1</span>
+API Key:  <span class="s">sk-your-key</span>
+<span class="c"># Provider: OpenAI Compatible</span></pre>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── FAQ ── -->
-<section id="faq">
-  <div class="narrow">
+<!-- ── Quick Start ── -->
+<section class="qs-section" id="start">
+  <div class="container">
     <div class="reveal">
-      <div class="kicker">常見問題 · FAQ</div>
-      <h2 class="section-title">你可能想問的。</h2>
+      <div class="kicker">部署</div>
+      <h2 class="section-title">三条命令 <em>上线</em></h2>
     </div>
+    <div class="terminal reveal" style="position:relative">
+      <div class="terminal-bar">
+        <span class="terminal-dot" style="background:#ff5f57"></span>
+        <span class="terminal-dot" style="background:#febc2e"></span>
+        <span class="terminal-dot" style="background:#28c840"></span>
+        <span class="terminal-title">~/WindsurfAPI</span>
+      </div>
+      <button class="copy-btn" data-copy>复制</button>
+<pre><span class="prompt">$</span> <span class="cmd">git clone https://github.com/dwgx/WindsurfAPI.git && cd WindsurfAPI</span>
+<span class="prompt">$</span> <span class="cmd">bash setup.sh</span>          <span class="cmt"># 建目录 · 配权限 · 生成 .env</span>
+<span class="prompt">$</span> <span class="cmd">node src/index.js</span>      <span class="cmt"># 启动服务</span>
 
-    <div class="faq-list reveal">
-      <details class="faq-item">
-        <summary>需要 Windsurf 付費帳號嗎？</summary>
-        <div class="a">免費帳號可以跑，但僅限 <code>gpt-4o-mini</code> 和 <code>gemini-2.5-flash</code>。Claude、GPT-5 全系、Gemini 3 等都需要 Windsurf Pro 訂閱。後台會自動偵測並標記每個帳號的 tier。</div>
-      </details>
-      <details class="faq-item">
-        <summary>可以 Windows 上跑嗎？</summary>
-        <div class="a">HTTP 伺服器和管理後台能跑，但 Language Server binary 只有 Linux 版本（<code>language_server_linux_x64</code>），所以聊天功能僅限 Linux。Windows 建議放 WSL2 或純 Linux VM。</div>
-      </details>
-      <details class="faq-item">
-        <summary>看不到最新模型（opus-4.7、gpt-5.3 之類）怎麼辦？</summary>
-        <div class="a">Exafunction 公開 release 停在 v2.12.5（2026-01），不含 4.7。從 Windsurf 桌面端 App 裡把 LS binary 拷出來即可：<br>
-        &bull; macOS：<code>~/Library/Application Support/Windsurf/.../language_server_macos_arm</code><br>
-        &bull; Linux：<code>~/.windsurf/bin/language_server_linux_x64</code><br>
-        拷過去後 <code>/v1/models</code> 會自動從雲端 discover 最新目錄。</div>
-      </details>
-      <details class="faq-item">
-        <summary>帳號會被封嗎？</summary>
-        <div class="a">高頻 burst 確實容易被識別。後台的封禁偵測面板會監控錯誤率，按 5 分鐘窗口做速率冷卻。推薦：每帳號 RPM &lt; 10、配不同出口代理（支援 SOCKS5）、混用思考型和普通模型。</div>
-      </details>
-      <details class="faq-item">
-        <summary>和其他類似專案的區別？</summary>
-        <div class="a">三點核心差異：<br>
-        (1) <strong>雙協定</strong>——同時有 <code>/v1/messages</code> 和 <code>/v1/chat/completions</code>。<br>
-        (2) <strong>planner_mode=NO_TOOL</strong>——關掉 Cascade 內建工具循環，消除路徑洩露。<br>
-        (3) <strong>完整管理後台 + 帳號池</strong>——多號輪詢 + 故障轉移 + Docker 一鍵部署。</div>
-      </details>
-      <details class="faq-item">
-        <summary>MIT License，可以商用嗎？</summary>
-        <div class="a">代碼本體 MIT License，法律上允許商用。README 顶上有一段作者態度：沒給 Star 和 Follow 的請別商業轉售，點了的隨便用。</div>
-      </details>
+<span class="cmt"># Docker 部署</span>
+<span class="prompt">$</span> <span class="cmd">docker compose up -d --build</span>
+
+<span class="cmt"># 打开 Dashboard</span>
+<span class="cmt"># http://你的IP:3003/dashboard</span></pre>
     </div>
   </div>
 </section>
@@ -764,194 +329,159 @@ client = OpenAI(
   <div class="container">
     <div class="footer-inner">
       <div class="footer-brand">
-        <div class="logo">Windsurf API</div>
-        <p>Windsurf 反向代理 · 純 Node.js 零依賴 · MIT License · <a href="https://github.com/dwgx" target="_blank" rel="noopener">@dwgx</a></p>
+        WindsurfAPI v2.0.0 · MIT License · <a href="https://github.com/dwgx" target="_blank">@dwgx</a>
       </div>
-      <div class="footer-col">
-        <h5>專案</h5>
-        <ul>
-          <li><a href="https://github.com/dwgx/WindsurfAPI" target="_blank" rel="noopener">GitHub</a></li>
-          <li><a href="https://github.com/dwgx/WindsurfAPI/releases" target="_blank" rel="noopener">Releases</a></li>
-          <li><a href="https://github.com/dwgx/WindsurfAPI/issues" target="_blank" rel="noopener">Issues</a></li>
-          <li><a href="https://github.com/dwgx/WindsurfAPI/blob/master/SECURITY.md" target="_blank" rel="noopener">Security</a></li>
-        </ul>
+      <div class="footer-links">
+        <a href="https://github.com/dwgx/WindsurfAPI" target="_blank">GitHub</a>
+        <a href="https://github.com/dwgx/WindsurfAPI/releases" target="_blank">Releases</a>
+        <a href="https://github.com/dwgx/WindsurfAPI/issues" target="_blank">Issues</a>
       </div>
-      <div class="footer-col">
-        <h5>文檔</h5>
-        <ul>
-          <li><a href="https://github.com/dwgx/WindsurfAPI/blob/master/README.md" target="_blank" rel="noopener">README (中文)</a></li>
-          <li><a href="https://github.com/dwgx/WindsurfAPI/blob/master/README.en.md" target="_blank" rel="noopener">README (EN)</a></li>
-          <li><a href="https://github.com/dwgx/WindsurfAPI/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
-        </ul>
-      </div>
-    </div>
-    <div class="footer-bottom">
-      <span>Contributors: <a href="https://github.com/dd373156">@dd373156</a> · <a href="https://github.com/colin1112a">@colin1112a</a> · <a href="https://github.com/motto1">@motto1</a> · <a href="https://github.com/youfak">@youfak</a></span>
-      <span>&copy; 2026 dwgx</span>
     </div>
   </div>
 </footer>
 
 <script>
-/* ── Models ── */
+/* ── Hero particle canvas ── */
 (function(){
-  const MODELS = [
-    {k:'claude-3.5-sonnet',p:'anthropic',c:2},
-    {k:'claude-3.7-sonnet',p:'anthropic',c:2},
-    {k:'claude-3.7-sonnet-thinking',p:'anthropic',c:3,thinking:1},
-    {k:'claude-4-sonnet',p:'anthropic',c:2},
-    {k:'claude-4-sonnet-thinking',p:'anthropic',c:3,thinking:1},
-    {k:'claude-4-opus',p:'anthropic',c:4},
-    {k:'claude-4-opus-thinking',p:'anthropic',c:5,thinking:1},
-    {k:'claude-4.1-opus',p:'anthropic',c:4},
-    {k:'claude-4.1-opus-thinking',p:'anthropic',c:5,thinking:1},
-    {k:'claude-4.5-haiku',p:'anthropic',c:1},
-    {k:'claude-4.5-sonnet',p:'anthropic',c:2},
-    {k:'claude-4.5-sonnet-thinking',p:'anthropic',c:3,thinking:1},
-    {k:'claude-4.5-opus',p:'anthropic',c:4},
-    {k:'claude-4.5-opus-thinking',p:'anthropic',c:5,thinking:1},
-    {k:'claude-sonnet-4.6',p:'anthropic',c:4},
-    {k:'claude-sonnet-4.6-thinking',p:'anthropic',c:6,thinking:1},
-    {k:'claude-sonnet-4.6-1m',p:'anthropic',c:12},
-    {k:'claude-sonnet-4.6-thinking-1m',p:'anthropic',c:16,thinking:1},
-    {k:'claude-opus-4.6',p:'anthropic',c:6},
-    {k:'claude-opus-4.6-thinking',p:'anthropic',c:8,thinking:1},
-    {k:'claude-code',p:'anthropic',c:2},
-    {k:'gpt-4o',p:'openai',c:1},
-    {k:'gpt-4o-mini',p:'openai',c:0.5,free:1},
-    {k:'gpt-4.1',p:'openai',c:1},
-    {k:'gpt-4.1-mini',p:'openai',c:0.5},
-    {k:'gpt-4.1-nano',p:'openai',c:0.25},
-    {k:'gpt-5',p:'openai',c:0.5},
-    {k:'gpt-5-medium',p:'openai',c:1},
-    {k:'gpt-5-high',p:'openai',c:2},
-    {k:'gpt-5-mini',p:'openai',c:0.25},
-    {k:'gpt-5-codex',p:'openai',c:0.5},
-    {k:'gpt-5.1',p:'openai',c:0.5},
-    {k:'gpt-5.1-low',p:'openai',c:0.5},
-    {k:'gpt-5.1-medium',p:'openai',c:1},
-    {k:'gpt-5.1-high',p:'openai',c:2},
-    {k:'gpt-5.1-fast',p:'openai',c:1},
-    {k:'gpt-5.1-low-fast',p:'openai',c:1},
-    {k:'gpt-5.1-medium-fast',p:'openai',c:2},
-    {k:'gpt-5.1-high-fast',p:'openai',c:4},
-    {k:'gpt-5.1-codex-low',p:'openai',c:0.5},
-    {k:'gpt-5.1-codex-medium',p:'openai',c:1},
-    {k:'gpt-5.1-codex-mini-low',p:'openai',c:0.25},
-    {k:'gpt-5.1-codex-high',p:'openai',c:2},
-    {k:'gpt-5.1-codex-fast',p:'openai',c:1},
-    {k:'gpt-5.2',p:'openai',c:1},
-    {k:'gpt-5.2-medium',p:'openai',c:1},
-    {k:'gpt-5.2-high',p:'openai',c:2},
-    {k:'o3',p:'openai',c:5,thinking:1},
-    {k:'o3-mini',p:'openai',c:2,thinking:1},
-    {k:'o3-pro',p:'openai',c:10,thinking:1},
-    {k:'o4-mini',p:'openai',c:2,thinking:1},
-    {k:'gemini-2.5-pro',p:'google',c:2},
-    {k:'gemini-2.5-flash',p:'google',c:0.25,free:1},
-    {k:'gemini-2.5-flash-thinking',p:'google',c:0.5,thinking:1},
-    {k:'gemini-3.0-pro',p:'google',c:4,thinking:1},
-    {k:'gemini-3.0-flash',p:'google',c:1},
-    {k:'gemini-3-pro-preview',p:'google',c:4},
-    {k:'deepseek-v3',p:'deepseek',c:0.5},
-    {k:'deepseek-v3.1',p:'deepseek',c:0.5},
-    {k:'deepseek-v3.2',p:'deepseek',c:0.5},
-    {k:'deepseek-r1',p:'deepseek',c:1,thinking:1},
-    {k:'deepseek-r1-0528',p:'deepseek',c:1,thinking:1},
-    {k:'grok-3',p:'xai',c:1},
-    {k:'grok-3-mini',p:'xai',c:0.5},
-    {k:'grok-4',p:'xai',c:2,thinking:1},
-    {k:'grok-4-fast',p:'xai',c:1},
-    {k:'grok-code-fast',p:'xai',c:1},
-    {k:'qwen-3-235b',p:'qwen',c:0.5},
-    {k:'qwen-3-coder',p:'qwen',c:1},
-    {k:'qwen-3-coder-fast',p:'qwen',c:1},
-    {k:'qwen3-max',p:'qwen',c:1},
-    {k:'kimi-k2',p:'moonshot',c:1},
-    {k:'kimi-k2-0905',p:'moonshot',c:1},
-    {k:'kimi-k2-thinking',p:'moonshot',c:2,thinking:1},
-    {k:'glm-4.5',p:'zhipu',c:0.5},
-    {k:'glm-4.6',p:'zhipu',c:1},
-    {k:'glm-4.6-thinking',p:'zhipu',c:1,thinking:1},
-    {k:'minimax-m2',p:'zhipu',c:1},
-    {k:'swe-1',p:'windsurf',c:0.5},
-    {k:'swe-1-lite',p:'windsurf',c:0.25},
-    {k:'swe-1.5',p:'windsurf',c:0.5},
-  ];
-
-  const grid = document.getElementById('model-grid');
-  if(!grid) return;
-  const providerShort = {anthropic:'Claude',openai:'GPT',google:'Gemini',deepseek:'DeepSeek',xai:'Grok',qwen:'Qwen',moonshot:'Kimi',zhipu:'GLM',windsurf:'SWE'};
-
-  function badge(m){
-    if(m.free) return '<span class="model-badge free">免費</span>';
-    if(m.thinking) return '<span class="model-badge thinking">思考</span>';
-    return '';
+  const c=document.getElementById('hero-canvas');if(!c)return;
+  const ctx=c.getContext('2d');
+  let w,h;
+  function resize(){w=c.width=c.offsetWidth;h=c.height=c.offsetHeight}
+  resize();window.addEventListener('resize',resize);
+  const particles=[];const N=80;
+  for(let i=0;i<N;i++)particles.push({x:Math.random()*2000,y:Math.random()*1200,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.5+.5,a:Math.random()*.4+.1});
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+    for(const p of particles){
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=w;if(p.x>w)p.x=0;if(p.y<0)p.y=h;if(p.y>h)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,107,74,${p.a})`;ctx.fill();
+    }
+    for(let i=0;i<particles.length;i++){
+      for(let j=i+1;j<particles.length;j++){
+        const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120){
+          ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);
+          ctx.strokeStyle=`rgba(78,205,196,${.08*(1-d/120)})`;ctx.lineWidth=.5;ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
   }
-
-  MODELS.forEach(m => {
-    const el = document.createElement('div');
-    el.className = 'model-card';
-    el.dataset.provider = m.p;
-    if(m.thinking) el.dataset.thinking = '1';
-    if(m.free) el.dataset.free = '1';
-    el.innerHTML = '<span class="model-name" title="'+m.k+'">'+m.k+'</span><div class="model-meta"><span class="model-provider">'+providerShort[m.p]+'</span>'+(badge(m)?'<span style="margin-left:.15rem">'+badge(m)+'</span>':'')+'<span class="model-cost">&times;'+m.c+'</span></div>';
-    grid.appendChild(el);
-  });
-
-  document.getElementById('stat-models').textContent = MODELS.length;
-  document.getElementById('count-all').textContent = MODELS.length;
-  document.getElementById('count-anthropic').textContent = MODELS.filter(m=>m.p==='anthropic').length;
-  document.getElementById('count-openai').textContent = MODELS.filter(m=>m.p==='openai').length;
-  document.getElementById('count-google').textContent = MODELS.filter(m=>m.p==='google').length;
-  document.getElementById('count-thinking').textContent = MODELS.filter(m=>m.thinking).length;
-  document.getElementById('count-free').textContent = MODELS.filter(m=>m.free).length;
-
-  document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    const f = b.dataset.filter;
-    grid.querySelectorAll('.model-card').forEach(card => {
-      let show = f==='all' || (f==='thinking'?card.dataset.thinking==='1':f==='free'?card.dataset.free==='1':card.dataset.provider===f);
-      card.classList.toggle('hide',!show);
-    });
-  }));
+  draw();
 })();
 
-/* ── Deploy tabs ── */
+/* ── Protocol animation ── */
 (function(){
-  document.querySelectorAll('.deploy-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.deploy-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.deploy-content').forEach(c => c.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById('tab-'+tab.dataset.tab).classList.add('active');
-    });
-  });
+  const inEl=document.getElementById('proto-in');
+  const outEl=document.getElementById('proto-out');
+  if(!inEl||!outEl)return;
+
+  const scenes=[
+    {
+      in:`<span class="c">// POST /v1/chat/completions</span>
+{
+  <span class="k">"model"</span>: <span class="s">"claude-4.5-sonnet"</span>,
+  <span class="k">"messages"</span>: [{
+    <span class="k">"role"</span>: <span class="s">"user"</span>,
+    <span class="k">"content"</span>: <span class="s">"写一个 fibonacci 函数"</span>
+  }],
+  <span class="k">"stream"</span>: <span class="n">true</span>,
+  <span class="k">"tools"</span>: [{
+    <span class="k">"function"</span>: {
+      <span class="k">"name"</span>: <span class="s">"read_file"</span>
+    }
+  }]
+}`,
+      out:`<span class="c">// gRPC SendUserCascadeMessage</span>
+<span class="h">field 1</span> cascade_id: <span class="b">"9a875ca8"</span>
+<span class="h">field 2</span> TextOrScopeItem {
+  text: <span class="s">"写一个 fibonacci 函数"</span>
+}
+<span class="h">field 3</span> Metadata {
+  api_key: <span class="b">[redacted]</span>
+  session_id: <span class="b">"d4e5f6..."</span>
+}
+<span class="h">field 5</span> CascadeConfig {
+  planner_mode: <span class="n">NO_TOOL (3)</span>
+  tool_calling: <span class="s">"[injected]"</span>
+}`
+    },
+    {
+      in:`<span class="c">// POST /v1/messages (Anthropic)</span>
+{
+  <span class="k">"model"</span>: <span class="s">"claude-sonnet-4.6"</span>,
+  <span class="k">"max_tokens"</span>: <span class="n">4096</span>,
+  <span class="k">"system"</span>: <span class="s">"You are a coding assistant"</span>,
+  <span class="k">"messages"</span>: [{
+    <span class="k">"role"</span>: <span class="s">"user"</span>,
+    <span class="k">"content"</span>: <span class="s">"分析这段代码"</span>
+  }]
+}`,
+      out:`<span class="c">// Anthropic → OpenAI → Cascade</span>
+<span class="h">translate</span> system → sysText prefix
+<span class="h">neutralize</span> "You are X" → "The assistant is X"
+<span class="h">field 2</span> TextOrScopeItem {
+  text: <span class="s">"The assistant is a coding\\n分析这段代码"</span>
+}
+<span class="h">field 5</span> CascadeConfig {
+  model_uid: <span class="b">"claude-sonnet-4-6"</span>
+  max_output_tokens: <span class="n">32768</span>
+}`
+    },
+  ];
+
+  let idx=0;
+  function show(){
+    const s=scenes[idx%scenes.length];
+    inEl.innerHTML=s.in;outEl.innerHTML=s.out;
+    idx++;
+  }
+  show();setInterval(show,6000);
+})();
+
+/* ── Provider grid ── */
+(function(){
+  const grid=document.getElementById('provider-grid');if(!grid)return;
+  const providers=[
+    {name:'Anthropic',icon:'A',color:'#D97757',glow:'rgba(217,119,87,.2)',models:['claude-4.5-sonnet','claude-opus-4.6','claude-sonnet-4.6-1m','+ 18 更多'],count:21},
+    {name:'OpenAI',icon:'O',color:'#10A37F',glow:'rgba(16,163,127,.2)',models:['gpt-5','gpt-5.2-xhigh','o3-pro','+ 40 更多'],count:43},
+    {name:'Google',icon:'G',color:'#4285F4',glow:'rgba(66,133,244,.2)',models:['gemini-2.5-flash','gemini-3.0-flash','gemini-3.1-pro','+ 6 更多'],count:9},
+    {name:'DeepSeek',icon:'D',color:'#7C3AED',glow:'rgba(124,58,237,.2)',models:['deepseek-v3','deepseek-r1'],count:2},
+    {name:'xAI',icon:'X',color:'#1DA1F2',glow:'rgba(29,161,242,.2)',models:['grok-3','grok-3-mini-thinking','grok-code-fast-1'],count:4},
+    {name:'Moonshot',icon:'K',color:'#F59E0B',glow:'rgba(245,158,11,.2)',models:['kimi-k2','kimi-k2.5','kimi-k2-6'],count:3},
+    {name:'Zhipu',icon:'Z',color:'#EF4444',glow:'rgba(239,68,68,.2)',models:['glm-4.7','glm-5','glm-5.1'],count:3},
+    {name:'MiniMax',icon:'M',color:'#8B5CF6',glow:'rgba(139,92,246,.2)',models:['minimax-m2.5'],count:1},
+    {name:'Windsurf',icon:'W',color:'#06B6D4',glow:'rgba(6,182,212,.2)',models:['swe-1.5','swe-1.6','arena-smart'],count:5},
+  ];
+  for(const p of providers){
+    const card=document.createElement('div');
+    card.className='provider-card';
+    card.style.setProperty('--p-color',p.color);
+    card.style.setProperty('--p-glow',p.glow);
+    card.innerHTML=`<div class="p-head"><div class="p-icon">${p.icon}</div><div class="p-name">${p.name}</div><div class="p-count">${p.count}</div></div><div class="p-models">${p.models.join(' · ')}</div>`;
+    grid.appendChild(card);
+  }
 })();
 
 /* ── Copy ── */
-(function(){
-  document.querySelectorAll('[data-copy]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const pre = btn.closest('.code-box').querySelector('pre');
-      try{
-        await navigator.clipboard.writeText(pre.innerText);
-        btn.textContent='已複製';btn.classList.add('ok');
-        setTimeout(()=>{btn.textContent='複製';btn.classList.remove('ok')},1400);
-      }catch{btn.textContent='失敗'}
-    });
+document.querySelectorAll('[data-copy]').forEach(btn=>{
+  btn.addEventListener('click',async()=>{
+    const pre=btn.closest('.terminal')?.querySelector('pre');
+    if(!pre)return;
+    try{await navigator.clipboard.writeText(pre.innerText);btn.textContent='已复制';btn.classList.add('ok');setTimeout(()=>{btn.textContent='复制';btn.classList.remove('ok')},1500)}catch{}
   });
-})();
+});
 
-/* ── Reveal ── */
-(function(){
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(e => { if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)} });
-  },{threshold:.12,rootMargin:'0px 0px -40px 0px'});
-  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
-})();
+/* ── Scroll reveal ── */
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.1,rootMargin:'0px 0px -30px 0px'});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+/* ── Stat count-up ── */
+const sio=new IntersectionObserver(es=>{es.forEach(e=>{if(!e.isIntersecting)return;sio.unobserve(e.target);const el=e.target.querySelector('.num');if(!el)return;const t=parseInt(el.textContent)||0;if(!t)return;let c=0;const step=Math.max(1,Math.floor(t/30));const iv=setInterval(()=>{c=Math.min(c+step,t);el.innerHTML=c+(el.innerHTML.includes('+')?'<span class="accent">+</span>':'');if(c>=t)clearInterval(iv)},30)})},{threshold:.5});
+document.querySelectorAll('.stat').forEach(s=>sio.observe(s));
 </script>
-
 </body>
 </html>
