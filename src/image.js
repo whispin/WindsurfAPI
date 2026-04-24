@@ -2,6 +2,7 @@ import https from 'node:https';
 import http from 'node:http';
 import { lookup as dnsLookup } from 'node:dns';
 import { log } from './config.js';
+import { tryExtractPdf } from './pdf.js';
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAX_BASE64_LEN = Math.ceil(MAX_SIZE * 4 / 3) + 100;
@@ -99,8 +100,28 @@ export async function extractImages(contentBlocks) {
 
     if (block.type === 'text') {
       text += block.text || '';
+    } else if (block.type === 'document') {
+      const src = block.source || {};
+      const mime = (src.media_type || '').toLowerCase();
+      if (mime === 'application/pdf' && src.data) {
+        const pdf = tryExtractPdf(src.data);
+        if (pdf?.text) {
+          text += `\n[PDF Document — ${pdf.pageCount} page(s)]\n${pdf.text}\n`;
+          log.info(`PDF extracted: ${pdf.pageCount} pages, ${pdf.text.length} chars`);
+        } else {
+          text += '\n[PDF Document — no extractable text (scanned/image-only PDF)]\n';
+        }
+      }
     } else if (block.type === 'image') {
       const src = block.source || {};
+      const mime = (src.media_type || '').toLowerCase();
+      if (mime === 'application/pdf' && src.data) {
+        const pdf = tryExtractPdf(src.data);
+        if (pdf?.text) {
+          text += `\n[PDF Document — ${pdf.pageCount} page(s)]\n${pdf.text}\n`;
+        }
+        continue;
+      }
       try {
         if ((src.type === 'base64' || !src.type) && src.data) {
           if (src.data.length > MAX_BASE64_LEN) { log.warn('Image base64 exceeds size limit, skipping'); continue; }

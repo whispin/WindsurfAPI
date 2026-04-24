@@ -1,0 +1,147 @@
+/**
+ * Zero-dependency PDF text extraction.
+ *
+ * Handles PDF 1.x text streams: decompress FlateDecode streams with
+ * Node.js built-in zlib, then extract text from Tj/TJ operators.
+ * Not a full PDF parser — designed for text-layer PDFs (reports, docs).
+ * Scanned PDFs (image-only) return empty text.
+ */
+
+import { inflateSync } from 'zlib';
+import { log } from './config.js';
+
+/**
+ * Extract text from a PDF buffer.
+ * @param {Buffer} buf - Raw PDF bytes
+ * @returns {string} Extracted text, or empty string if no text layer
+ */
+export function extractPdfText(buf) {
+  const pages = [];
+
+  // Find all stream...endstream blocks
+  let pos = 0;
+  while (pos < buf.length) {
+    const streamStart = buf.indexOf('stream\n', pos);
+    if (streamStart === -1) break;
+
+    const dataStart = streamStart + 7; // skip "stream\n"
+    // Handle \r\n after "stream"
+    const actualStart = buf[streamStart + 6] === 0x0d ? dataStart + 1 : dataStart;
+
+    const endStream = buf.indexOf('\nendstream', actualStart);
+    if (endStream === -1) break;
+
+    const streamData = buf.subarray(actualStart, endStream);
+
+    // Check if this stream has FlateDecode by looking back at the dictionary
+    const dictStart = Math.max(0, streamStart - 500);
+    const dictText = buf.subarray(dictStart, streamStart).toString('latin1');
+    const isFlate = dictText.includes('FlateDecode');
+
+    let decoded;
+    try {
+      if (isFlate) {
+        decoded = inflateSync(streamData).toString('latin1');
+      } else {
+        decoded = streamData.toString('latin1');
+      }
+    } catch {
+      pos = endStream + 10;
+      continue;
+    }
+
+    // Extract text from PDF operators
+    const text = extractTextOps(decoded);
+    if (text.trim()) pages.push(text.trim());
+
+    pos = endStream + 10;
+  }
+
+  return pages.join('\n\n');
+}
+
+/**
+ * Extract text from PDF content stream operators.
+ * Handles: (text) Tj, [(text)] TJ, Td/Tm for positioning
+ */
+function extractTextOps(stream) {
+  const lines = [];
+  let currentLine = '';
+
+  // Match BT...ET blocks (text objects)
+  const btBlocks = stream.match(/BT[\s\S]*?ET/g);
+  if (!btBlocks) return '';
+
+  for (const block of btBlocks) {
+    // (string) Tj — show string
+    const tjMatches = block.matchAll(/\(([^)]*)\)\s*Tj/g);
+    for (const m of tjMatches) {
+      currentLine += decodePdfString(m[1]);
+    }
+
+    // [...] TJ — show strings with spacing
+    const tjArrayMatches = block.matchAll(/\[((?:[^[\]]*|\([^)]*\))*)\]\s*TJ/gi);
+    for (const m of tjArrayMatches) {
+      const inner = m[1];
+      const parts = inner.matchAll(/\(([^)]*)\)|(-?\d+(?:\.\d+)?)/g);
+      for (const p of parts) {
+        if (p[1] !== undefined) {
+          currentLine += decodePdfString(p[1]);
+        } else if (p[2] !== undefined) {
+          const kern = parseFloat(p[2]);
+          if (kern < -100) currentLine += ' ';
+        }
+      }
+    }
+
+    // Td/TD/Tm — text positioning (new line heuristic)
+    if (/\d+\s+(?:-?\d+(?:\.\d+)?)\s+T[dD]/g.test(block)) {
+      if (currentLine.trim()) {
+        lines.push(currentLine.trim());
+        currentLine = '';
+      }
+    }
+  }
+
+  if (currentLine.trim()) lines.push(currentLine.trim());
+  return lines.join('\n');
+}
+
+/**
+ * Decode PDF string escapes: \n, \r, \t, \\, \(, \), octal
+ */
+function decodePdfString(s) {
+  return s.replace(/\\([nrtbf()\\]|\d{1,3})/g, (_, c) => {
+    if (c === 'n') return '\n';
+    if (c === 'r') return '\r';
+    if (c === 't') return '\t';
+    if (c === 'b') return '\b';
+    if (c === 'f') return '\f';
+    if (c === '(' || c === ')' || c === '\\') return c;
+    return String.fromCharCode(parseInt(c, 8));
+  });
+}
+
+/**
+ * Try to extract text from base64-encoded PDF.
+ * @param {string} base64Data - Base64 encoded PDF
+ * @returns {{ text: string, pageCount: number } | null}
+ */
+export function tryExtractPdf(base64Data) {
+  try {
+    const buf = Buffer.from(base64Data, 'base64');
+    if (buf.length < 5 || buf.subarray(0, 5).toString() !== '%PDF-') return null;
+
+    const text = extractPdfText(buf);
+    if (!text.trim()) {
+      log.warn('PDF has no extractable text layer (scanned/image-only PDF)');
+      return { text: '', pageCount: 0 };
+    }
+
+    const pageCount = (buf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+    return { text, pageCount };
+  } catch (e) {
+    log.warn(`PDF extraction failed: ${e.message}`);
+    return null;
+  }
+}

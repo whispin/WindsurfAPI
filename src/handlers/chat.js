@@ -221,14 +221,19 @@ export async function handleChatCompletions(body) {
 
   const wantJson = response_format?.type === 'json_object' || response_format?.type === 'json_schema';
   if (wantJson) {
-    const jsonHint = '\n\n[IMPORTANT: You MUST respond with valid JSON only. No markdown, no explanation, no code fences. Output a single JSON object.]';
-    messages = messages.map((m, i) => {
+    let jsonHint = '\n\n[You MUST respond with valid JSON only. No markdown code fences, no explanation text, no prefix/suffix. Your entire response must be a single parseable JSON object.';
+    if (response_format?.type === 'json_schema' && response_format?.json_schema?.schema) {
+      jsonHint += ' Conform to this JSON Schema:\n' + JSON.stringify(response_format.json_schema.schema);
+    }
+    jsonHint += ']';
+    const sysJsonMsg = { role: 'system', content: 'Respond with valid JSON only. No markdown, no code fences, no explanation. Output must be parseable by JSON.parse().' };
+    messages = [sysJsonMsg, ...messages.map((m, i) => {
       if (i === messages.length - 1 && m.role === 'user') {
         const content = typeof m.content === 'string' ? m.content + jsonHint : m.content;
         return { ...m, content };
       }
       return m;
-    });
+    })];
   }
 
   const modelKey = resolveModel(reqModel || config.defaultModel);
@@ -544,15 +549,10 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
         generatorOffset: chunks.generatorOffset,
       };
       serverUsage = chunks.usage || null;
-      // Always strip <tool_call>/<tool_result> blocks from Cascade text.
-      // - emulateTools=true: parsed tool_calls become OpenAI-format tool_calls.
-      // - emulateTools=false: blocks are silently discarded (defense-in-depth
-      //   against Cascade's system prompt inducing tool markup even after we
-      //   override tool_calling_section).
       {
         const parsed = parseToolCallsFromText(allText);
         allText = parsed.text;
-        if (emulateTools) toolCalls = parsed.toolCalls;
+        toolCalls = parsed.toolCalls;
       }
       // Built-in Cascade tool calls (chunks.toolCalls — edit_file, view_file,
       // list_directory, run_command, etc.) are intentionally DROPPED. Their
@@ -571,6 +571,10 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
     // return. See src/sanitize.js for the patterns and rationale.
     allText = sanitizeText(allText);
     allText = neutralizeCascadeIdentity(allText, model);
+    if (wantJson && allText) {
+      const fenceMatch = allText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+      if (fenceMatch) allText = fenceMatch[1].trim();
+    }
     allThinking = sanitizeText(allThinking);
     if (toolCalls.length) {
       toolCalls = toolCalls.map(tc => sanitizeToolCall(tc));
@@ -834,13 +838,11 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
             // silently discarded. Sanitize server-internal paths out of
             // the emulated call's input too (issue #38) — otherwise Claude
             // Code tries to Read the sandbox path and fails.
-            if (emulateTools) {
-              for (const rawTc of done) {
-                const tc = sanitizeToolCall(rawTc);
-                const idx = collectedToolCalls.length;
-                collectedToolCalls.push(tc);
-                emitToolCallDelta(tc, idx);
-              }
+            for (const rawTc of done) {
+              const tc = sanitizeToolCall(rawTc);
+              const idx = collectedToolCalls.length;
+              collectedToolCalls.push(tc);
+              emitToolCallDelta(tc, idx);
             }
           }
           if (safeText) emitContent(pathStreamText.feed(safeText));
@@ -946,13 +948,11 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
             if (toolParser) {
               const tail = toolParser.flush();
               if (tail.text) emitContent(pathStreamText.feed(tail.text));
-              if (emulateTools) {
-                for (const rawTc of tail.toolCalls) {
-                  const tc = sanitizeToolCall(rawTc);
-                  const idx = collectedToolCalls.length;
-                  collectedToolCalls.push(tc);
-                  emitToolCallDelta(tc, idx);
-                }
+              for (const rawTc of tail.toolCalls) {
+                const tc = sanitizeToolCall(rawTc);
+                const idx = collectedToolCalls.length;
+                collectedToolCalls.push(tc);
+                emitToolCallDelta(tc, idx);
               }
             }
             emitContent(pathStreamText.flush());
