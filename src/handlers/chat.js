@@ -937,14 +937,15 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
 
     // Scrub server-internal filesystem paths from everything we're about to
     // return. See src/sanitize.js for the patterns and rationale.
-    allText = sanitizeText(allText);
+    const cwdReplacement = callerEnv?.cwd;
+    allText = sanitizeText(allText, cwdReplacement);
     allText = neutralizeCascadeIdentity(allText, model);
     if (wantJson && allText) {
       allText = extractJsonPayload(allText);
     }
-    allThinking = sanitizeText(allThinking);
+    allThinking = sanitizeText(allThinking, cwdReplacement);
     if (toolCalls.length) {
-      toolCalls = toolCalls.map(tc => sanitizeToolCall(tc));
+      toolCalls = toolCalls.map(tc => sanitizeToolCall(tc, cwdReplacement));
     }
 
     // Check the cascade back into the pool under the *post-turn* fingerprint
@@ -1182,8 +1183,9 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
       // PathSanitizeStream before leaving the server so /tmp/windsurf-workspace,
       // /opt/windsurf and /root/WindsurfAPI literals can never slip out even
       // if a path straddles a chunk boundary. See src/sanitize.js.
-      let pathStreamText = new PathSanitizeStream();
-      let pathStreamThinking = new PathSanitizeStream();
+      const cwdReplacement = callerEnv?.cwd;
+      let pathStreamText = new PathSanitizeStream(cwdReplacement);
+      let pathStreamThinking = new PathSanitizeStream(cwdReplacement);
 
       const emitContent = (clean) => {
         if (!clean) return;
@@ -1210,7 +1212,7 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
               index: idx,
               id: tc.id,
               type: 'function',
-              function: { name: tc.name, arguments: sanitizeText(tc.argumentsJson || '{}') },
+              function: { name: tc.name, arguments: sanitizeText(tc.argumentsJson || '{}', cwdReplacement) },
             }],
           }, finish_reason: null }] });
       };
@@ -1238,7 +1240,7 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
             // the emulated call's input too (issue #38) — otherwise Claude
             // Code tries to Read the sandbox path and fails.
             for (const rawTc of done) {
-              const tc = sanitizeToolCall(rawTc);
+              const tc = sanitizeToolCall(rawTc, cwdReplacement);
               const idx = collectedToolCalls.length;
               collectedToolCalls.push(tc);
               emitToolCallDelta(tc, idx);
@@ -1260,8 +1262,8 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
           // means we already emitted content so no retry happens anyway.
           if (attempt > 0 && !hadSuccess) {
             if (useCascade) toolParser = new ToolCallStreamParser();
-            pathStreamText = new PathSanitizeStream();
-            pathStreamThinking = new PathSanitizeStream();
+            pathStreamText = new PathSanitizeStream(cwdReplacement);
+            pathStreamThinking = new PathSanitizeStream(cwdReplacement);
           }
           let acct = null;
           if (reuseEntry && attempt === 0) {
@@ -1348,7 +1350,7 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
               const tail = toolParser.flush();
               if (tail.text) emitContent(pathStreamText.feed(tail.text));
               for (const rawTc of tail.toolCalls) {
-                const tc = sanitizeToolCall(rawTc);
+                const tc = sanitizeToolCall(rawTc, cwdReplacement);
                 const idx = collectedToolCalls.length;
                 collectedToolCalls.push(tc);
                 emitToolCallDelta(tc, idx);

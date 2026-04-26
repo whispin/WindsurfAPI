@@ -80,11 +80,30 @@ const PATH_BODY_RE = /[^\s"'`<>)}\],*;]/;
 /**
  * Apply all path redactions to `s` in one pass. Safe to call on any string;
  * non-strings and empty strings are returned unchanged.
+ * If cwdReplacement is provided, Cascade's internal workspace paths are replaced
+ * with the real client path instead of being scrubbed to '…'.
  */
-export function sanitizeText(s) {
+export function sanitizeText(s, cwdReplacement = null) {
   if (typeof s !== 'string' || !s) return s;
   let out = s;
-  for (const [re, rep] of PATTERNS) out = out.replace(re, rep);
+
+  if (cwdReplacement) {
+    out = out.replace(/\/tmp\/windsurf-workspace/g, cwdReplacement);
+    out = out.replace(/\/home\/user\/projects\/workspace-[a-z0-9]+/g, cwdReplacement);
+  }
+
+  for (let i = 0; i < PATTERNS.length; i++) {
+    const [re, rep] = PATTERNS[i];
+    // Skip scrubbing /tmp/windsurf-workspace and workspace-xxx if we replaced them
+    if (cwdReplacement && (i === 0 || i === 1)) continue;
+    
+    // Skip scrubbing _repoRoot if the client's working directory is inside it
+    if (cwdReplacement && i === 3) {
+      const normCwd = cwdReplacement.replace(/\\/g, '/').toLowerCase();
+      if (normCwd.startsWith(_repoRoot.toLowerCase())) continue;
+    }
+    out = out.replace(re, rep);
+  }
   return out;
 }
 
@@ -102,8 +121,9 @@ export function sanitizeText(s) {
  * held internally until the next feed or the flush.
  */
 export class PathSanitizeStream {
-  constructor() {
+  constructor(cwdReplacement = null) {
     this.buffer = '';
+    this.cwdReplacement = cwdReplacement;
   }
 
   feed(delta) {
@@ -113,7 +133,7 @@ export class PathSanitizeStream {
     if (cut === 0) return '';
     const safeRegion = this.buffer.slice(0, cut);
     this.buffer = this.buffer.slice(cut);
-    return sanitizeText(safeRegion);
+    return sanitizeText(safeRegion, this.cwdReplacement);
   }
 
   // Largest index into this.buffer such that buffer[0:cut] contains no
@@ -179,15 +199,15 @@ export class PathSanitizeStream {
  * delta whose file_path still references /home/user/projects/workspace-x
  * and Claude Code would try to Read a path that doesn't exist locally.
  */
-export function sanitizeToolCall(tc) {
+export function sanitizeToolCall(tc, cwdReplacement = null) {
   if (!tc) return tc;
   const out = { ...tc };
-  if (typeof tc.argumentsJson === 'string') out.argumentsJson = sanitizeText(tc.argumentsJson);
-  if (typeof tc.result === 'string') out.result = sanitizeText(tc.result);
+  if (typeof tc.argumentsJson === 'string') out.argumentsJson = sanitizeText(tc.argumentsJson, cwdReplacement);
+  if (typeof tc.result === 'string') out.result = sanitizeText(tc.result, cwdReplacement);
   if (tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)) {
     const safe = {};
     for (const [k, v] of Object.entries(tc.input)) {
-      safe[k] = typeof v === 'string' ? sanitizeText(v) : v;
+      safe[k] = typeof v === 'string' ? sanitizeText(v, cwdReplacement) : v;
     }
     out.input = safe;
   }
