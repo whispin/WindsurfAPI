@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractCallerEnvironment } from '../src/handlers/chat.js';
+import { extractCallerEnvironment, extractCwdFromEnv } from '../src/handlers/chat.js';
 import { buildToolPreambleForProto } from '../src/handlers/tool-emulation.js';
+import { sanitizeText, sanitizeToolCall } from '../src/sanitize.js';
 
 // Why these tests exist:
 //
@@ -184,5 +185,65 @@ describe('buildToolPreambleForProto with environment override', () => {
   it('still returns empty string when there are no tools (env alone is not enough to render)', () => {
     const out = buildToolPreambleForProto([], 'auto', '- Working directory: /x');
     assert.equal(out, '');
+  });
+});
+
+describe('extractCwdFromEnv', () => {
+  it('extracts Unix cwd from callerEnv string', () => {
+    const env = '- Working directory: /Users/jaxyu/IdeaProjects/flux-panel\n- Platform: darwin';
+    assert.equal(extractCwdFromEnv(env), '/Users/jaxyu/IdeaProjects/flux-panel');
+  });
+
+  it('extracts Windows cwd from callerEnv string', () => {
+    const env = '- Working directory: D:\\projects\\github\\WindsurfAPI\n- Platform: win32';
+    assert.equal(extractCwdFromEnv(env), 'D:\\projects\\github\\WindsurfAPI');
+  });
+
+  it('returns null for empty string', () => {
+    assert.equal(extractCwdFromEnv(''), null);
+  });
+
+  it('returns null for env without cwd', () => {
+    assert.equal(extractCwdFromEnv('- Platform: linux'), null);
+  });
+});
+
+describe('sanitizeText with cwdReplacement', () => {
+  it('replaces /tmp/windsurf-workspace with real cwd', () => {
+    const result = sanitizeText(
+      'cd /tmp/windsurf-workspace/src && ls -la',
+      'D:\\projects\\github\\WindsurfAPI'
+    );
+    assert.equal(result, 'cd D:\\projects\\github\\WindsurfAPI/src && ls -la');
+  });
+
+  it('replaces /home/user/projects/workspace-xxx with real cwd', () => {
+    const result = sanitizeText(
+      'cat /home/user/projects/workspace-devinxse/package.json',
+      '/Users/jaxyu/IdeaProjects/flux-panel'
+    );
+    assert.equal(result, 'cat /Users/jaxyu/IdeaProjects/flux-panel/package.json');
+  });
+
+  it('still redacts /opt/windsurf paths even with cwdReplacement', () => {
+    const result = sanitizeText(
+      'binary at /opt/windsurf/ls_bin',
+      '/Users/me/proj'
+    );
+    assert.ok(!result.includes('/opt/windsurf'));
+  });
+
+  it('falls back to \u2026 when no cwdReplacement is provided', () => {
+    const result = sanitizeText('cd /tmp/windsurf-workspace && pwd');
+    assert.equal(result, 'cd \u2026 && pwd');
+  });
+});
+
+describe('sanitizeToolCall with cwdReplacement', () => {
+  it('replaces workspace paths inside tool call arguments', () => {
+    const tc = { name: 'Bash', argumentsJson: '{"command":"cat /tmp/windsurf-workspace/README.md"}' };
+    const result = sanitizeToolCall(tc, 'D:\\projects\\WindsurfAPI');
+    assert.ok(result.argumentsJson.includes('D:\\projects\\WindsurfAPI/README.md'));
+    assert.ok(!result.argumentsJson.includes('/tmp/windsurf-workspace'));
   });
 });

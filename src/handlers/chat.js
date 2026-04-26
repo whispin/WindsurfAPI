@@ -333,6 +333,16 @@ export function extractCallerEnvironment(messages) {
   return out.join('\n');
 }
 
+/**
+ * Extract the raw cwd path from an extractCallerEnvironment() result string.
+ * Returns null if no cwd was found.
+ */
+export function extractCwdFromEnv(envText) {
+  if (!envText) return null;
+  const m = envText.match(/Working directory:\s*(.+)/i);
+  return m ? m[1].trim() : null;
+}
+
 // Rough token estimate (~4 chars/token). Used only to populate the
 // OpenAI-compatible `usage.prompt_tokens_details.cached_tokens` field so
 // upstream billing/dashboards (new-api) can recognise our local cache hits.
@@ -937,7 +947,7 @@ async function nonStreamResponse(client, id, created, model, modelKey, messages,
 
     // Scrub server-internal filesystem paths from everything we're about to
     // return. See src/sanitize.js for the patterns and rationale.
-    const cwdReplacement = callerEnv?.cwd;
+    const cwdReplacement = extractCwdFromEnv(callerEnv);
     allText = sanitizeText(allText, cwdReplacement);
     allText = neutralizeCascadeIdentity(allText, model);
     if (wantJson && allText) {
@@ -1183,7 +1193,7 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
       // PathSanitizeStream before leaving the server so /tmp/windsurf-workspace,
       // /opt/windsurf and /root/WindsurfAPI literals can never slip out even
       // if a path straddles a chunk boundary. See src/sanitize.js.
-      const cwdReplacement = callerEnv?.cwd;
+      const cwdReplacement = extractCwdFromEnv(callerEnv);
       let pathStreamText = new PathSanitizeStream(cwdReplacement);
       let pathStreamThinking = new PathSanitizeStream(cwdReplacement);
 
