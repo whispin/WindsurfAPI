@@ -114,6 +114,40 @@ describe('extractCallerEnvironment', () => {
     assert.equal(extractCallerEnvironment(undefined), '');
     assert.equal(extractCallerEnvironment('not an array'), '');
   });
+
+  // ── Windows path support ──────────────────────────────────────
+  it('lifts cwd with Windows backslash path from <env> block', () => {
+    const messages = [
+      { role: 'system', content: '<env>\nWorking directory: D:\\projects\\github\\WindsurfAPI\nPlatform: windows\n</env>' },
+      { role: 'user', content: 'check the code' },
+    ];
+    const result = extractCallerEnvironment(messages);
+    assert.match(result, /- Working directory: D:\\projects\\github\\WindsurfAPI/);
+    assert.match(result, /- Platform: windows/);
+  });
+
+  it('lifts cwd with Windows forward-slash path from <env> block', () => {
+    const messages = [
+      { role: 'system', content: 'Working directory: C:/Users/ray/project' },
+    ];
+    assert.match(extractCallerEnvironment(messages), /- Working directory: C:\/Users\/ray\/project/);
+  });
+
+  it('lifts cwd from prose form with Windows path', () => {
+    const messages = [
+      { role: 'system', content: 'You are an agent and the current working directory is D:\\projects\\github\\WindsurfAPI.' },
+      { role: 'user', content: 'check project' },
+    ];
+    const result = extractCallerEnvironment(messages);
+    assert.match(result, /- Working directory: D:\\projects\\github\\WindsurfAPI/);
+  });
+
+  it('lifts cwd from prose form with backtick-wrapped Windows path', () => {
+    const messages = [
+      { role: 'system', content: 'The current working directory is `C:\\Users\\ray\\my-project`.' },
+    ];
+    assert.match(extractCallerEnvironment(messages), /- Working directory: C:\\Users\\ray\\my-project/);
+  });
 });
 
 describe('buildToolPreambleForProto with environment override', () => {

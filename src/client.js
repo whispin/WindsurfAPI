@@ -103,9 +103,12 @@ function neutralizeIdentityForCascade(sysText) {
 
 function extractCompactSystemFacts(sysText) {
   const facts = [];
+  // Path capture supports both Unix (/path, ~/path) and Windows (C:\path,
+  // D:/path) formats so the compact-system-prompt fallback preserves cwd
+  // for Windows clients.
   const patterns = [
-    [/current working directory(?:\s+is)?\s*[:=]?\s*`?([/~][^\s`'"<>\n.,;)]+)/i, 'Working directory'],
-    [/(?:^|\n)\s*(?:[-*]\s+)?Working directory\s*[:=]\s*`?([/~][^\s`'"<>\n.,;)]+)/i, 'Working directory'],
+    [/current working directory(?:\s+is)?\s*[:=]?\s*`?((?:[/~]|[A-Za-z]:[/\\])[^\s`'"<>\n.,;)]+)/i, 'Working directory'],
+    [/(?:^|\n)\s*(?:[-*]\s+)?Working directory\s*[:=]\s*`?((?:[/~]|[A-Za-z]:[/\\])[^\s`'"<>\n.,;)]+)/i, 'Working directory'],
     [/(?:^|\n)\s*(?:[-*]\s+)?Is directory a git repo\s*[:=]\s*([^\n<]+)/i, 'Is directory a git repo'],
     [/(?:^|\n)\s*(?:[-*]\s+)?Platform\s*[:=]\s*([^\n<]+)/i, 'Platform'],
     [/(?:^|\n)\s*(?:[-*]\s+)?OS Version\s*[:=]\s*([^\n<]+)/i, 'OS version'],
