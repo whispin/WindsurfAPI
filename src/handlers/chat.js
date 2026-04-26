@@ -283,8 +283,8 @@ export function extractCallerEnvironment(messages) {
     ['cwd', new RegExp(
       // Form (a): line-anchored key/value
       `(?:^|\\n)\\s*(?:[-*]\\s+)?(?:Working directory|cwd|<cwd>)\\s*[:=]\\s*\`?(${PATH_TAIL})\`?` +
-      // Form (b): prose "current working directory is /path"
-      `|(?:current\\s+working\\s+directory(?:\\s+is)?)\\s*[:=]?\\s*\`?(${PATH_TAIL})\`?`,
+      // Form (b): prose "current working directory is /path" or "working directory: /path"
+      `|(?:(?:current\\s+)?working\\s+directory|cwd)\\s*(?:is\\s+|at\\s+|[:=]\\s*)*\`?(${PATH_TAIL})\`?`,
       'i'
     ), (v) => `- Working directory: ${v}`],
     ['git', /(?:^|\n)\s*(?:[-*]\s+)?Is directory a git repo\s*[:=]\s*([^\n<]+)/i, (v) => `- Is the directory a git repo: ${v}`],
@@ -601,7 +601,7 @@ export async function handleChatCompletions(body, context = {}) {
         const c = typeof m?.content === 'string' ? m.content
           : Array.isArray(m?.content) ? m.content.filter(p => p?.type === 'text').map(p => p.text || '').join('\n')
           : '';
-        const hit = c.match(/[^.\n]{0,40}(?:working directory|cwd|<env>|<cwd>)[^.\n]{0,80}/i);
+        const hit = c.match(/.{0,40}(?:working directory|cwd|<env>|<cwd>).{0,100}/is);
         if (hit) { probe = hit[0].replace(/\s+/g, ' ').slice(0, 160); break; }
       }
       log.info(`Chat[${reqId}]: env NOT lifted (extractor returned empty)${probe ? '; nearest env-shaped substring in messages: ' + probe : '; no env-shaped substring found in any message'}`);
@@ -1460,7 +1460,7 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
         }
 
         // All attempts failed
-        log.error('Stream error after retries:', lastErr?.message);
+        log.error('Stream error after retries:', lastErr?.message || lastErr?.body?.error?.message || String(lastErr));
         recordRequest(model, false, Date.now() - startTime, currentApiKey);
         try {
           const rl = isAllRateLimited(modelKey);
